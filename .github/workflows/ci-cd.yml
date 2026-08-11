@@ -62,6 +62,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy:
+    if: vars.DEPLOY_ENABLED == 'true'
     needs: publish
     runs-on: ubuntu-latest
     environment: production

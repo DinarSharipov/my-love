@@ -72,6 +72,8 @@ npm run start:dev
 | `DEPLOY_PATH` | абсолютный каталог сервиса на сервере |
 | `GHCR_PAT` | GitHub token с `read:packages` для скачивания private image |
 
+Автоматические проверки и сборка Docker image выполняются после каждого merge в `main`. Деплой по умолчанию отключён, чтобы workflow не падал до подготовки сервера. Для его включения создайте repository variable `DEPLOY_ENABLED=true` в `Settings → Secrets and variables → Actions → Variables`.
+
 На сервере должны быть установлены Docker и Compose plugin, создан `DEPLOY_PATH`, а в нём — production `.env`. Push в `main` после успешных проверок публикует immutable image в GHCR, копирует Compose-файл, применяет Prisma migrations и обновляет сервис.
 
 ## Архитектурные решения и развитие
