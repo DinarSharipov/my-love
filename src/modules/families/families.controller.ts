@@ -23,7 +23,7 @@ export class FamiliesController {
   @ApiOperation({ summary: 'Get the current user family' })
   @ApiOkResponse({ type: FamilyResponseDto })
   @ApiNotFoundResponse({ description: 'The current user does not belong to a family' })
-  findMine(@CurrentUser() user: AuthenticatedUser): Promise<FamilyResponseDto> {
+  findMyFamily(@CurrentUser() user: AuthenticatedUser): Promise<FamilyResponseDto> {
     return this.familiesService.findMine(user.id);
   }
 }

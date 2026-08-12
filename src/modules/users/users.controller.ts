@@ -24,7 +24,7 @@ export class UsersController {
   @Get()
   @ApiOperation({ summary: 'Search the user registry' })
   @ApiOkResponse({ type: PaginatedUsersResponseDto })
-  findAll(
+  findUsers(
     @CurrentUser() currentUser: AuthenticatedUser,
     @Query() query: UsersQueryDto,
   ): Promise<PaginatedUsersResponseDto> {
@@ -35,7 +35,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Get a public user profile' })
   @ApiOkResponse({ type: PublicUserResponseDto })
   @ApiNotFoundResponse()
-  findOne(@Param('id', ParseUUIDPipe) id: string): Promise<PublicUserResponseDto> {
+  findUserById(@Param('id', ParseUUIDPipe) id: string): Promise<PublicUserResponseDto> {
     return this.usersService.findPublicById(id);
   }
 }

@@ -45,7 +45,7 @@ export class FamilyEventsController {
   @ApiCreatedResponse({ type: FamilyEventResponseDto })
   @ApiBadRequestResponse({ description: 'The event date is not in the future' })
   @ApiForbiddenResponse({ description: 'The current user does not belong to a family' })
-  create(
+  createFamilyEvent(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateFamilyEventDto,
   ): Promise<FamilyEventResponseDto> {
@@ -56,7 +56,7 @@ export class FamilyEventsController {
   @ApiOperation({ summary: 'Get events of the current user family' })
   @ApiOkResponse({ type: PaginatedFamilyEventsResponseDto })
   @ApiBadRequestResponse({ description: 'dateFrom must be earlier than dateTo' })
-  findAll(
+  findFamilyEvents(
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: FamilyEventsQueryDto,
   ): Promise<PaginatedFamilyEventsResponseDto> {
@@ -67,7 +67,7 @@ export class FamilyEventsController {
   @ApiOperation({ summary: 'Get one event of the current user family' })
   @ApiOkResponse({ type: FamilyEventResponseDto })
   @ApiNotFoundResponse({ description: 'Event does not exist in the current user family' })
-  findOne(
+  findFamilyEventById(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<FamilyEventResponseDto> {
@@ -79,7 +79,7 @@ export class FamilyEventsController {
   @ApiOkResponse({ type: FamilyEventResponseDto })
   @ApiConflictResponse({ description: 'The proposal was answered or its date has passed' })
   @ApiForbiddenResponse({ description: 'Only the partner can confirm the event' })
-  confirm(
+  confirmFamilyEvent(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<FamilyEventResponseDto> {
@@ -91,7 +91,7 @@ export class FamilyEventsController {
   @ApiOkResponse({ type: FamilyEventResponseDto })
   @ApiConflictResponse({ description: 'The proposal has already been answered' })
   @ApiForbiddenResponse({ description: 'Only the partner can reject the event' })
-  reject(
+  rejectFamilyEvent(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<FamilyEventResponseDto> {
@@ -104,7 +104,7 @@ export class FamilyEventsController {
   @ApiNoContentResponse({ description: 'Event hidden but retained in the database' })
   @ApiForbiddenResponse({ description: 'Only the event creator can delete it' })
   @ApiNotFoundResponse({ description: 'Event does not exist in the current user family' })
-  async remove(
+  async removeFamilyEvent(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {

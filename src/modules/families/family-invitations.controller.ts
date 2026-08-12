@@ -34,7 +34,7 @@ export class FamilyInvitationsController {
   @ApiOperation({ summary: 'Invite another user to create a family' })
   @ApiCreatedResponse({ type: FamilyInvitationResponseDto })
   @ApiConflictResponse({ description: 'A user is unavailable or an invitation already exists' })
-  create(
+  createFamilyInvitation(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateFamilyInvitationDto,
   ): Promise<FamilyInvitationResponseDto> {
@@ -44,21 +44,25 @@ export class FamilyInvitationsController {
   @Get('incoming')
   @ApiOperation({ summary: 'Get invitations received by the current user' })
   @ApiOkResponse({ type: [FamilyInvitationResponseDto] })
-  findIncoming(@CurrentUser() user: AuthenticatedUser): Promise<FamilyInvitationResponseDto[]> {
+  findIncomingInvitations(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<FamilyInvitationResponseDto[]> {
     return this.invitationsService.findIncoming(user.id);
   }
 
   @Get('outgoing')
   @ApiOperation({ summary: 'Get invitations sent by the current user' })
   @ApiOkResponse({ type: [FamilyInvitationResponseDto] })
-  findOutgoing(@CurrentUser() user: AuthenticatedUser): Promise<FamilyInvitationResponseDto[]> {
+  findOutgoingInvitations(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<FamilyInvitationResponseDto[]> {
     return this.invitationsService.findOutgoing(user.id);
   }
 
   @Patch(':id/accept')
   @ApiOperation({ summary: 'Accept an invitation and create a family' })
   @ApiOkResponse({ type: FamilyInvitationResponseDto })
-  accept(
+  acceptFamilyInvitation(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<FamilyInvitationResponseDto> {
@@ -68,7 +72,7 @@ export class FamilyInvitationsController {
   @Patch(':id/reject')
   @ApiOperation({ summary: 'Reject a received invitation' })
   @ApiOkResponse({ type: FamilyInvitationResponseDto })
-  reject(
+  rejectFamilyInvitation(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<FamilyInvitationResponseDto> {
@@ -78,7 +82,7 @@ export class FamilyInvitationsController {
   @Patch(':id/cancel')
   @ApiOperation({ summary: 'Cancel a sent invitation' })
   @ApiOkResponse({ type: FamilyInvitationResponseDto })
-  cancel(
+  cancelFamilyInvitation(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<FamilyInvitationResponseDto> {
