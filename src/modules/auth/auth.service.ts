@@ -5,6 +5,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../database/prisma.service';
+import { durationToSeconds } from '../../common/utils/duration';
 import { UsersService } from '../users/users.service';
 import { UserResponseDto } from '../users/dto/user-response.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
@@ -68,7 +69,7 @@ export class AuthService {
     const jti = randomUUID();
     const tokenHash = createHash('sha256').update(jti).digest('hex');
     const expiresInValue = this.config.getOrThrow<string>('JWT_ACCESS_EXPIRES_IN');
-    const expiresIn = this.durationToSeconds(expiresInValue);
+    const expiresIn = durationToSeconds(expiresInValue);
     const payload: JwtPayload = { sub: user.id, email: user.email, jti };
 
     const accessToken = await this.jwtService.signAsync(payload, {
@@ -80,12 +81,5 @@ export class AuthService {
     });
 
     return { accessToken, tokenType: 'Bearer', expiresIn, user: UserResponseDto.fromEntity(user) };
-  }
-
-  private durationToSeconds(value: string): number {
-    const match = /^(\d+)([smhdw])$/.exec(value);
-    if (!match) throw new Error('JWT_ACCESS_EXPIRES_IN has invalid format');
-    const multipliers = { s: 1, m: 60, h: 3600, d: 86400, w: 604800 };
-    return Number(match[1]) * multipliers[match[2] as keyof typeof multipliers];
   }
 }

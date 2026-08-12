@@ -1,6 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, User } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { PaginatedUsersResponseDto } from './dto/paginated-users-response.dto';
+import { PublicUserResponseDto } from './dto/public-user-response.dto';
+import { UsersQueryDto } from './dto/users-query.dto';
 
 @Injectable()
 export class UsersService {
@@ -16,5 +19,53 @@ export class UsersService {
 
   findById(id: string): Promise<User | null> {
     return this.prisma.user.findUnique({ where: { id } });
+  }
+
+  async findRegistry(
+    currentUserId: string,
+    query: UsersQueryDto,
+  ): Promise<PaginatedUsersResponseDto> {
+    const search = query.search?.trim();
+    const where: Prisma.UserWhereInput = {
+      id: { not: currentUserId },
+      isActive: true,
+      ...(search
+        ? {
+            OR: [
+              { firstName: { contains: search, mode: 'insensitive' } },
+              { lastName: { contains: search, mode: 'insensitive' } },
+              { email: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const [users, total] = await this.prisma.$transaction([
+      this.prisma.user.findMany({
+        where,
+        include: { familyMember: { select: { id: true } } },
+        orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return {
+      data: users.map((user) => PublicUserResponseDto.fromEntity(user)),
+      total,
+      page: query.page,
+      limit: query.limit,
+      totalPages: Math.ceil(total / query.limit),
+    };
+  }
+
+  async findPublicById(id: string): Promise<PublicUserResponseDto> {
+    const user = await this.prisma.user.findFirst({
+      where: { id, isActive: true },
+      include: { familyMember: { select: { id: true } } },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    return PublicUserResponseDto.fromEntity(user);
   }
 }
