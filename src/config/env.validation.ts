@@ -16,4 +16,14 @@ export const envValidationSchema = Joi.object({
   FAMILY_INVITATION_EXPIRES_IN: Joi.string()
     .pattern(/^\d+[smhdw]$/)
     .default('7d'),
+  APP_TIMEZONE: Joi.string()
+    .custom((value: string, helpers) => {
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: value });
+        return value;
+      } catch {
+        return helpers.error('any.invalid');
+      }
+    })
+    .default('Europe/Moscow'),
 });

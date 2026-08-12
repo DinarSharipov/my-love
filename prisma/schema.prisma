@@ -22,6 +22,12 @@ enum FamilyInvitationStatus {
   EXPIRED
 }
 
+enum FamilyEventDecisionStatus {
+  PROPOSED
+  CONFIRMED
+  REJECTED
+}
+
 model User {
   id                        String             @id @default(uuid()) @db.Uuid
   firstName                 String             @map("first_name") @db.VarChar(100)
@@ -39,6 +45,9 @@ model User {
   familyMember              FamilyMember?
   sentFamilyInvitations     FamilyInvitation[] @relation("FamilyInvitationSender")
   receivedFamilyInvitations FamilyInvitation[] @relation("FamilyInvitationRecipient")
+  proposedFamilyEvents      FamilyEvent[]      @relation("FamilyEventProposer")
+  respondedFamilyEvents     FamilyEvent[]      @relation("FamilyEventResponder")
+  deletedFamilyEvents       FamilyEvent[]      @relation("FamilyEventDeleter")
 
   @@index([lastName, firstName], map: "users_last_name_first_name_idx")
   @@map("users")
@@ -49,8 +58,35 @@ model Family {
   createdAt DateTime       @default(now()) @map("created_at")
   updatedAt DateTime       @updatedAt @map("updated_at")
   members   FamilyMember[]
+  events    FamilyEvent[]
 
   @@map("families")
+}
+
+model FamilyEvent {
+  id            String                    @id @default(uuid()) @db.Uuid
+  familyId      String                    @map("family_id") @db.Uuid
+  proposedById  String                    @map("proposed_by_id") @db.Uuid
+  respondedById String?                   @map("responded_by_id") @db.Uuid
+  deletedById   String?                   @map("deleted_by_id") @db.Uuid
+  name          String                    @db.VarChar(200)
+  description   String?                   @db.Text
+  scheduledAt   DateTime                  @map("scheduled_at")
+  location      String                    @db.VarChar(500)
+  status        FamilyEventDecisionStatus @default(PROPOSED)
+  respondedAt   DateTime?                 @map("responded_at")
+  deletedAt     DateTime?                 @map("deleted_at")
+  createdAt     DateTime                  @default(now()) @map("created_at")
+  updatedAt     DateTime                  @updatedAt @map("updated_at")
+  family        Family                    @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  proposedBy    User                      @relation("FamilyEventProposer", fields: [proposedById], references: [id], onDelete: Restrict)
+  respondedBy   User?                     @relation("FamilyEventResponder", fields: [respondedById], references: [id], onDelete: Restrict)
+  deletedBy     User?                     @relation("FamilyEventDeleter", fields: [deletedById], references: [id], onDelete: Restrict)
+
+  @@index([familyId, scheduledAt])
+  @@index([proposedById])
+  @@index([familyId, deletedAt, scheduledAt])
+  @@map("family_events")
 }
 
 model FamilyMember {
