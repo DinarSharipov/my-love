@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -16,6 +16,7 @@ import { FamilyEventsModule } from './modules/family-events/family-events.module
     LoggerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
+        forRoutes: [{ path: '{*path}', method: RequestMethod.ALL }],
         pinoHttp: {
           level: config.get('LOG_LEVEL', 'info'),
           redact: ['req.headers.authorization', 'req.body.password', 'res.headers["set-cookie"]'],
