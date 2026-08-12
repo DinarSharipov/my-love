@@ -48,6 +48,7 @@ model User {
   proposedFamilyEvents      FamilyEvent[]      @relation("FamilyEventProposer")
   respondedFamilyEvents     FamilyEvent[]      @relation("FamilyEventResponder")
   deletedFamilyEvents       FamilyEvent[]      @relation("FamilyEventDeleter")
+  createdFirstDates         FirstDate[]        @relation("FirstDateCreator")
 
   @@index([lastName, firstName], map: "users_last_name_first_name_idx")
   @@map("users")
@@ -59,8 +60,25 @@ model Family {
   updatedAt DateTime       @updatedAt @map("updated_at")
   members   FamilyMember[]
   events    FamilyEvent[]
+  firstDate FirstDate?
 
   @@map("families")
+}
+
+model FirstDate {
+  id          String   @id @default(uuid()) @db.Uuid
+  familyId    String   @unique @map("family_id") @db.Uuid
+  createdById String   @map("created_by_id") @db.Uuid
+  name        String   @db.VarChar(200)
+  date        DateTime @db.Date
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  family      Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("FirstDateCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([createdById])
+  @@map("first_dates")
 }
 
 model FamilyEvent {

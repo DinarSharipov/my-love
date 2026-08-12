@@ -9,6 +9,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { FamiliesModule } from './modules/families/families.module';
 import { FamilyEventsModule } from './modules/family-events/family-events.module';
+import { FirstDateModule } from './modules/first-date/first-date.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { FamilyEventsModule } from './modules/family-events/family-events.module
     AuthModule,
     FamiliesModule,
     FamilyEventsModule,
+    FirstDateModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
