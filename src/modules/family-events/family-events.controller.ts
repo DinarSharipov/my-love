@@ -1,0 +1,113 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
+  ApiNoContentResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import type { AuthenticatedUser } from '../auth/types/authenticated-user.type';
+import { CreateFamilyEventDto } from './dto/create-family-event.dto';
+import { FamilyEventResponseDto } from './dto/family-event-response.dto';
+import { FamilyEventsQueryDto } from './dto/family-events-query.dto';
+import { PaginatedFamilyEventsResponseDto } from './dto/paginated-family-events-response.dto';
+import { FamilyEventsService } from './family-events.service';
+
+@ApiTags('family events')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller({ path: 'family-events', version: '1' })
+export class FamilyEventsController {
+  constructor(private readonly eventsService: FamilyEventsService) {}
+
+  @Post()
+  @ApiOperation({ summary: 'Propose a new event to the partner' })
+  @ApiCreatedResponse({ type: FamilyEventResponseDto })
+  @ApiBadRequestResponse({ description: 'The event date is not in the future' })
+  @ApiForbiddenResponse({ description: 'The current user does not belong to a family' })
+  create(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateFamilyEventDto,
+  ): Promise<FamilyEventResponseDto> {
+    return this.eventsService.create(user.id, dto);
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Get events of the current user family' })
+  @ApiOkResponse({ type: PaginatedFamilyEventsResponseDto })
+  @ApiBadRequestResponse({ description: 'dateFrom must be earlier than dateTo' })
+  findAll(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: FamilyEventsQueryDto,
+  ): Promise<PaginatedFamilyEventsResponseDto> {
+    return this.eventsService.findAll(user.id, query);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get one event of the current user family' })
+  @ApiOkResponse({ type: FamilyEventResponseDto })
+  @ApiNotFoundResponse({ description: 'Event does not exist in the current user family' })
+  findOne(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<FamilyEventResponseDto> {
+    return this.eventsService.findOne(id, user.id);
+  }
+
+  @Patch(':id/confirm')
+  @ApiOperation({ summary: 'Confirm an event proposed by the partner' })
+  @ApiOkResponse({ type: FamilyEventResponseDto })
+  @ApiConflictResponse({ description: 'The proposal was answered or its date has passed' })
+  @ApiForbiddenResponse({ description: 'Only the partner can confirm the event' })
+  confirm(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<FamilyEventResponseDto> {
+    return this.eventsService.confirm(id, user.id);
+  }
+
+  @Patch(':id/reject')
+  @ApiOperation({ summary: 'Reject an event proposed by the partner' })
+  @ApiOkResponse({ type: FamilyEventResponseDto })
+  @ApiConflictResponse({ description: 'The proposal has already been answered' })
+  @ApiForbiddenResponse({ description: 'Only the partner can reject the event' })
+  reject(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<FamilyEventResponseDto> {
+    return this.eventsService.reject(id, user.id);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Soft-delete an event created by the current user' })
+  @ApiNoContentResponse({ description: 'Event hidden but retained in the database' })
+  @ApiForbiddenResponse({ description: 'Only the event creator can delete it' })
+  @ApiNotFoundResponse({ description: 'Event does not exist in the current user family' })
+  async remove(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    await this.eventsService.remove(id, user.id);
+  }
+}

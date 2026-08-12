@@ -46,8 +46,16 @@ npm run start:dev
 - `PATCH /api/v1/family-invitations/:id/reject` — отклонить приглашение
 - `PATCH /api/v1/family-invitations/:id/cancel` — отменить приглашение
 - `GET /api/v1/families/me` — получить свою семью
+- `POST /api/v1/family-events` — предложить партнеру мероприятие
+- `GET /api/v1/family-events?page=1&limit=20&dateFrom=2026-08-01&dateTo=2026-09-01` — мероприятия своей семьи; начало периода включается, конец не включается
+- `GET /api/v1/family-events/:id` — одно мероприятие своей семьи
+- `PATCH /api/v1/family-events/:id/confirm` — подтвердить предложение партнера
+- `PATCH /api/v1/family-events/:id/reject` — отклонить предложение партнера
+- `DELETE /api/v1/family-events/:id` — скрыть созданное собой мероприятие без физического удаления из БД
 - `GET /api/v1/health`
 - `GET /docs`
+
+Статусы `PROPOSED`, `CONFIRMED` и `REJECTED` отражают решение партнера. Для подтвержденного мероприятия API автоматически возвращает `EVENT_DAY` в день события и `COMPLETED` после него. Календарный день определяется переменной `APP_TIMEZONE` (по умолчанию `Europe/Moscow`).
 
 ## Переменные окружения
 
@@ -65,6 +73,7 @@ npm run start:dev
 | `JWT_ACCESS_SECRET` | случайная строка не короче 32 символов |
 | `JWT_ACCESS_EXPIRES_IN` | срок JWT (`7d`, `12h`, `30m`) |
 | `FAMILY_INVITATION_EXPIRES_IN` | срок действия приглашения, по умолчанию `7d` |
+| `APP_TIMEZONE` | IANA timezone для календарных статусов мероприятий, по умолчанию `Europe/Moscow` |
 | `APP_IMAGE` | Docker image/tag для локального запуска или CD |
 
 Сгенерировать секрет можно командой `openssl rand -base64 48`. Production `.env` не коммитится и должен находиться в `${DEPLOY_PATH}/.env` на сервере с ограниченными правами доступа.
