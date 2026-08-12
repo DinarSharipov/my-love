@@ -10,7 +10,7 @@ export class HealthController {
   @Get()
   @ApiOperation({ summary: 'Application and database readiness check' })
   @ApiOkResponse({ schema: { example: { status: 'ok', database: 'up' } } })
-  async check(): Promise<{ status: string; database: string }> {
+  async checkHealth(): Promise<{ status: string; database: string }> {
     try {
       await this.prisma.$queryRaw`SELECT 1`;
       return { status: 'ok', database: 'up' };
