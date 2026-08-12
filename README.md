@@ -37,6 +37,15 @@ npm run start:dev
 - `POST /api/v1/auth/register`
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/logout` — требует `Authorization: Bearer <token>`
+- `GET /api/v1/users?search=...&page=1&limit=20` — безопасный реестр пользователей
+- `GET /api/v1/users/:id` — публичный профиль пользователя
+- `POST /api/v1/family-invitations` — отправить приглашение
+- `GET /api/v1/family-invitations/incoming` — входящие приглашения
+- `GET /api/v1/family-invitations/outgoing` — исходящие приглашения
+- `PATCH /api/v1/family-invitations/:id/accept` — принять приглашение
+- `PATCH /api/v1/family-invitations/:id/reject` — отклонить приглашение
+- `PATCH /api/v1/family-invitations/:id/cancel` — отменить приглашение
+- `GET /api/v1/families/me` — получить свою семью
 - `GET /api/v1/health`
 - `GET /docs`
 
@@ -55,6 +64,7 @@ npm run start:dev
 | `DATABASE_URL` | Prisma connection string |
 | `JWT_ACCESS_SECRET` | случайная строка не короче 32 символов |
 | `JWT_ACCESS_EXPIRES_IN` | срок JWT (`7d`, `12h`, `30m`) |
+| `FAMILY_INVITATION_EXPIRES_IN` | срок действия приглашения, по умолчанию `7d` |
 | `APP_IMAGE` | Docker image/tag для локального запуска или CD |
 
 Сгенерировать секрет можно командой `openssl rand -base64 48`. Production `.env` не коммитится и должен находиться в `${DEPLOY_PATH}/.env` на сервере с ограниченными правами доступа.
@@ -72,10 +82,12 @@ npm run start:dev
 | `DEPLOY_PATH` | абсолютный каталог сервиса на сервере |
 | `GHCR_PAT` | GitHub token с `read:packages` для скачивания private image |
 
+Автоматические проверки и сборка Docker image выполняются после каждого merge в `main`. Деплой по умолчанию отключён, чтобы workflow не падал до подготовки сервера. Для его включения создайте repository variable `DEPLOY_ENABLED=true` в `Settings → Secrets and variables → Actions → Variables`.
+
 На сервере должны быть установлены Docker и Compose plugin, создан `DEPLOY_PATH`, а в нём — production `.env`. Push в `main` после успешных проверок публикует immutable image в GHCR, копирует Compose-файл, применяет Prisma migrations и обновляет сервис.
 
 ## Архитектурные решения и развитие
 
-Функции сгруппированы в независимые модули (`auth`, `users`, `health`), доступ к данным изолирован в глобальном `DatabaseModule`. Таблица `AuthSession` уже позволяет поддержать несколько устройств, принудительный logout и последующую реализацию списка сессий.
+Функции сгруппированы в независимые модули (`auth`, `users`, `families`, `health`), доступ к данным изолирован в глобальном `DatabaseModule`. Таблица `AuthSession` уже позволяет поддержать несколько устройств, принудительный logout и последующую реализацию списка сессий.
 
 Для следующего этапа рекомендованы refresh-токены с ротацией (тогда access token лучше сократить до 10–15 минут), подтверждение email/телефона, восстановление пароля, RBAC/permissions и аудит важных действий. Google OAuth следует добавлять как отдельную identity-сущность, не привязывая провайдера напрямую к `User`; очереди уведомлений — через BullMQ/Redis и transactional outbox. WebSocket gateway также лучше держать отдельным модулем и авторизовывать тем же token validation service.

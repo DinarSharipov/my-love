@@ -13,4 +13,7 @@ export const envValidationSchema = Joi.object({
   JWT_ACCESS_EXPIRES_IN: Joi.string()
     .pattern(/^\d+[smhdw]$/)
     .default('7d'),
+  FAMILY_INVITATION_EXPIRES_IN: Joi.string()
+    .pattern(/^\d+[smhdw]$/)
+    .default('7d'),
 });
