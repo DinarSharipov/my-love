@@ -27,6 +27,9 @@ describe('FirstDateService', () => {
     timeZone: 'Europe/Moscow',
     version: 1,
     isActive: true,
+    deletionRequestedAt: null,
+    deletionScheduledAt: null,
+    retentionAnonymizedAt: null,
     createdAt: new Date('2026-08-12T10:00:00.000Z'),
     updatedAt: new Date('2026-08-12T10:00:00.000Z'),
   };

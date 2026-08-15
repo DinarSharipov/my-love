@@ -29,7 +29,13 @@ describe('FamilyEventsService', () => {
     description: null,
     birthDate: new Date('1995-05-20'),
     phone: null,
+    locale: 'ru-RU',
+    timeZone: 'Europe/Moscow',
+    version: 1,
     isActive: true,
+    deletionRequestedAt: null,
+    deletionScheduledAt: null,
+    retentionAnonymizedAt: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
   };
