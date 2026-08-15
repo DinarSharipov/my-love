@@ -1,6 +1,8 @@
 name: Test and deploy
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -32,6 +34,7 @@ jobs:
       - run: npm run build
 
   image:
+    if: github.event_name != 'pull_request'
     needs: test
     runs-on: ubuntu-latest
     outputs:
@@ -58,6 +61,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: image
     runs-on: ubuntu-latest
     environment: production
