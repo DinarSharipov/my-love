@@ -30,7 +30,9 @@ work сверять записи ниже с фактическими schema/con
 - Docker Compose, health API+DB, production image и изолированная E2E PostgreSQL.
 - Production deployment: push в `main` запускает lint/unit/build, публикует immutable
   image в приватный GHCR, подключается к серверу отдельным SSH deploy-key, применяет
-  Prisma migrations, обновляет Compose и проверяет health. PostgreSQL не публикует порт.
+  Prisma migrations, обновляет Compose и проверяет health. PostgreSQL и API container
+  не публикуют внутренние порты; Caddy терминирует TLS на
+  `https://api.147.45.124.221.sslip.io`.
 - Совместимый error envelope с `code`, `details`, `requestId`.
 - Общие pagination/date/time/timezone/money contracts.
 - Optional optimistic concurrency (`If-Match`) для first date, events и профиля.
@@ -178,6 +180,10 @@ work сверять записи ниже с фактическими schema/con
 - Public user registry оставлен ради обратной совместимости и требует privacy-решения.
 - Старые endpoint/DTO нельзя молча ломать: frontend сильно зависит от generated contract.
 - Frontend не изменять; необходимые frontend-действия фиксировать только здесь.
+- Frontend follow-up (выполняет отдельный frontend-агент): production frontend
+  `https://my-love-frontend.vercel.app` должен направлять `/api/:path*` на
+  `https://api.147.45.124.221.sslip.io/api/:path*` через Vercel rewrite. Текущий
+  `VITE_API_PROXY_TARGET` используется только Vite dev server и не меняет production fetch.
 - Frontend follow-up (выполняет отдельный frontend-агент): заменить legacy
   `POST /api/v1/auth/restore` на `POST /api/v1/auth/password-reset/request` и добавить
   страницу `/reset-password` для `POST /api/v1/auth/password-reset/confirm`.
