@@ -13,7 +13,8 @@ export class FirstDateResponseDto {
   @ApiProperty({ format: 'uuid' }) familyId: string;
   @ApiProperty() name: string;
   @ApiProperty({ type: String, format: 'date', example: '2024-08-15' }) date: Date;
-  @ApiPropertyOptional({ nullable: true }) description: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) description: string | null;
+  @ApiProperty({ minimum: 1 }) version: number;
   @ApiProperty({ type: UserResponseDto }) createdBy: UserResponseDto;
   @ApiProperty() createdAt: Date;
   @ApiProperty() updatedAt: Date;
@@ -25,6 +26,7 @@ export class FirstDateResponseDto {
       name: firstDate.name,
       date: firstDate.date,
       description: firstDate.description,
+      version: firstDate.version,
       createdBy: UserResponseDto.fromEntity(firstDate.createdBy),
       createdAt: firstDate.createdAt,
       updatedAt: firstDate.updatedAt,

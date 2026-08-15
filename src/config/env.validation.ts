@@ -16,6 +16,12 @@ export const envValidationSchema = Joi.object({
   FAMILY_INVITATION_EXPIRES_IN: Joi.string()
     .pattern(/^\d+[smhdw]$/)
     .default('7d'),
+  PRIVATE_FAMILY_INVITATION_COOLDOWN: Joi.string()
+    .pattern(/^\d+[smhdw]$/)
+    .default('1m'),
+  FRONTEND_APP_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .default('http://localhost:5173'),
   APP_TIMEZONE: Joi.string()
     .custom((value: string, helpers) => {
       try {
@@ -26,4 +32,8 @@ export const envValidationSchema = Joi.object({
       }
     })
     .default('Europe/Moscow'),
+  DEFAULT_LOCALE: Joi.string().min(2).max(35).default('ru-RU'),
+  DEFAULT_CURRENCY: Joi.string()
+    .pattern(/^[A-Z]{3}$/)
+    .default('RUB'),
 });

@@ -28,39 +28,64 @@ enum FamilyEventDecisionStatus {
   REJECTED
 }
 
+enum FamilyStatus {
+  ACTIVE
+  ARCHIVED
+  DISSOLVED
+}
+
+enum FamilyMemberRole {
+  PARTNER
+  CHILD
+}
+
+enum IdempotencyStatus {
+  PROCESSING
+  COMPLETED
+}
+
 model User {
-  id                        String             @id @default(uuid()) @db.Uuid
-  firstName                 String             @map("first_name") @db.VarChar(100)
-  lastName                  String             @map("last_name") @db.VarChar(100)
-  email                     String             @unique @db.VarChar(320)
-  passwordHash              String?            @map("password_hash") @db.VarChar(255)
-  gender                    Gender
-  description               String?            @db.Text
-  birthDate                 DateTime           @map("birth_date") @db.Date
-  phone                     String?            @db.VarChar(32)
-  isActive                  Boolean            @default(true) @map("is_active")
-  createdAt                 DateTime           @default(now()) @map("created_at")
-  updatedAt                 DateTime           @updatedAt @map("updated_at")
-  sessions                  AuthSession[]
-  familyMember              FamilyMember?
-  sentFamilyInvitations     FamilyInvitation[] @relation("FamilyInvitationSender")
-  receivedFamilyInvitations FamilyInvitation[] @relation("FamilyInvitationRecipient")
-  proposedFamilyEvents      FamilyEvent[]      @relation("FamilyEventProposer")
-  respondedFamilyEvents     FamilyEvent[]      @relation("FamilyEventResponder")
-  deletedFamilyEvents       FamilyEvent[]      @relation("FamilyEventDeleter")
-  createdFirstDates         FirstDate[]        @relation("FirstDateCreator")
+  id                         String                    @id @default(uuid()) @db.Uuid
+  firstName                  String                    @map("first_name") @db.VarChar(100)
+  lastName                   String                    @map("last_name") @db.VarChar(100)
+  email                      String                    @unique @db.VarChar(320)
+  passwordHash               String?                   @map("password_hash") @db.VarChar(255)
+  gender                     Gender
+  description                String?                   @db.Text
+  birthDate                  DateTime                  @map("birth_date") @db.Date
+  phone                      String?                   @db.VarChar(32)
+  isActive                   Boolean                   @default(true) @map("is_active")
+  createdAt                  DateTime                  @default(now()) @map("created_at")
+  updatedAt                  DateTime                  @updatedAt @map("updated_at")
+  sessions                   AuthSession[]
+  familyMember               FamilyMember?
+  sentFamilyInvitations      FamilyInvitation[]        @relation("FamilyInvitationSender")
+  receivedFamilyInvitations  FamilyInvitation[]        @relation("FamilyInvitationRecipient")
+  sentPrivateInvitations     PrivateFamilyInvitation[] @relation("PrivateFamilyInvitationSender")
+  acceptedPrivateInvitations PrivateFamilyInvitation[] @relation("PrivateFamilyInvitationAcceptor")
+  proposedFamilyEvents       FamilyEvent[]             @relation("FamilyEventProposer")
+  respondedFamilyEvents      FamilyEvent[]             @relation("FamilyEventResponder")
+  deletedFamilyEvents        FamilyEvent[]             @relation("FamilyEventDeleter")
+  createdFirstDates          FirstDate[]               @relation("FirstDateCreator")
+  idempotencyRecords         IdempotencyRecord[]
 
   @@index([lastName, firstName], map: "users_last_name_first_name_idx")
   @@map("users")
 }
 
 model Family {
-  id        String         @id @default(uuid()) @db.Uuid
-  createdAt DateTime       @default(now()) @map("created_at")
-  updatedAt DateTime       @updatedAt @map("updated_at")
-  members   FamilyMember[]
-  events    FamilyEvent[]
-  firstDate FirstDate?
+  id              String         @id @default(uuid()) @db.Uuid
+  status          FamilyStatus   @default(ACTIVE)
+  timeZone        String         @default("Europe/Moscow") @map("time_zone") @db.VarChar(100)
+  locale          String         @default("ru-RU") @db.VarChar(35)
+  defaultCurrency String         @default("RUB") @map("default_currency") @db.Char(3)
+  archivedAt      DateTime?      @map("archived_at")
+  dissolvedAt     DateTime?      @map("dissolved_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  members         FamilyMember[]
+  events          FamilyEvent[]
+  firstDate       FirstDate?
 
   @@map("families")
 }
@@ -72,6 +97,7 @@ model FirstDate {
   name        String   @db.VarChar(200)
   date        DateTime @db.Date
   description String?  @db.Text
+  version     Int      @default(1)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
   family      Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
@@ -94,6 +120,7 @@ model FamilyEvent {
   status        FamilyEventDecisionStatus @default(PROPOSED)
   respondedAt   DateTime?                 @map("responded_at")
   deletedAt     DateTime?                 @map("deleted_at")
+  version       Int                       @default(1)
   createdAt     DateTime                  @default(now()) @map("created_at")
   updatedAt     DateTime                  @updatedAt @map("updated_at")
   family        Family                    @relation(fields: [familyId], references: [id], onDelete: Cascade)
@@ -108,15 +135,17 @@ model FamilyEvent {
 }
 
 model FamilyMember {
-  id       String   @id @default(uuid()) @db.Uuid
-  familyId String   @map("family_id") @db.Uuid
-  userId   String   @unique @map("user_id") @db.Uuid
-  joinedAt DateTime @default(now()) @map("joined_at")
-  family   Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id       String           @id @default(uuid()) @db.Uuid
+  familyId String           @map("family_id") @db.Uuid
+  userId   String           @unique @map("user_id") @db.Uuid
+  role     FamilyMemberRole @default(PARTNER)
+  joinedAt DateTime         @default(now()) @map("joined_at")
+  family   Family           @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([familyId, userId])
   @@index([familyId])
+  @@index([familyId, role])
   @@map("family_members")
 }
 
@@ -138,6 +167,28 @@ model FamilyInvitation {
   @@map("family_invitations")
 }
 
+model PrivateFamilyInvitation {
+  id             String                 @id @default(uuid()) @db.Uuid
+  senderId       String                 @map("sender_id") @db.Uuid
+  acceptedById   String?                @map("accepted_by_id") @db.Uuid
+  recipientEmail String                 @map("recipient_email") @db.VarChar(320)
+  tokenHash      String                 @unique @map("token_hash") @db.Char(64)
+  status         FamilyInvitationStatus @default(PENDING)
+  expiresAt      DateTime               @map("expires_at")
+  maxUses        Int                    @default(1) @map("max_uses")
+  useCount       Int                    @default(0) @map("use_count")
+  respondedAt    DateTime?              @map("responded_at")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+  sender         User                   @relation("PrivateFamilyInvitationSender", fields: [senderId], references: [id], onDelete: Cascade)
+  acceptedBy     User?                  @relation("PrivateFamilyInvitationAcceptor", fields: [acceptedById], references: [id], onDelete: SetNull)
+
+  @@index([senderId, status])
+  @@index([recipientEmail, status])
+  @@index([expiresAt, status])
+  @@map("private_family_invitations")
+}
+
 model AuthSession {
   id        String   @id @default(uuid()) @db.Uuid
   tokenHash String   @unique @map("token_hash") @db.Char(64)
@@ -149,4 +200,23 @@ model AuthSession {
   @@index([userId])
   @@index([expiresAt])
   @@map("auth_sessions")
+}
+
+model IdempotencyRecord {
+  id             String            @id @default(uuid()) @db.Uuid
+  userId         String            @map("user_id") @db.Uuid
+  scope          String            @db.VarChar(150)
+  key            String            @db.VarChar(128)
+  requestHash    String            @map("request_hash") @db.Char(64)
+  status         IdempotencyStatus @default(PROCESSING)
+  responseStatus Int?              @map("response_status")
+  responseBody   Json?             @map("response_body")
+  expiresAt      DateTime          @map("expires_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, scope, key])
+  @@index([expiresAt, status])
+  @@map("idempotency_records")
 }

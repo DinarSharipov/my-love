@@ -13,7 +13,8 @@ export class FamilyInvitationResponseDto {
   @ApiProperty({ type: PublicUserResponseDto }) sender: PublicUserResponseDto;
   @ApiProperty({ type: PublicUserResponseDto }) recipient: PublicUserResponseDto;
   @ApiProperty() expiresAt: Date;
-  @ApiPropertyOptional({ nullable: true }) respondedAt: Date | null;
+  @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true })
+  respondedAt: Date | null;
   @ApiProperty() createdAt: Date;
 
   static fromEntity(invitation: InvitationEntity): FamilyInvitationResponseDto {

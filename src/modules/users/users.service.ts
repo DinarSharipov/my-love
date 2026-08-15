@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, User } from '@prisma/client';
+import { paginationMeta } from '../../common/dto/pagination-response.dto';
 import { PrismaService } from '../../database/prisma.service';
 import { PaginatedUsersResponseDto } from './dto/paginated-users-response.dto';
 import { PublicUserResponseDto } from './dto/public-user-response.dto';
@@ -53,10 +54,7 @@ export class UsersService {
 
     return {
       data: users.map((user) => PublicUserResponseDto.fromEntity(user)),
-      total,
-      page: query.page,
-      limit: query.limit,
-      totalPages: Math.ceil(total / query.limit),
+      ...paginationMeta(total, query.page, query.limit),
     };
   }
 

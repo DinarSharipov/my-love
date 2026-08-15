@@ -8,7 +8,7 @@ export class PublicUserResponseDto {
   @ApiProperty({ example: 'Иван' }) firstName: string;
   @ApiProperty({ example: 'Иванов' }) lastName: string;
   @ApiProperty({ enum: Gender }) gender: Gender;
-  @ApiPropertyOptional({ nullable: true }) description: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) description: string | null;
   @ApiProperty({ example: 'iv***@example.com' }) email: string;
   @ApiProperty({ description: 'Whether the user already belongs to a family' }) hasFamily: boolean;
 

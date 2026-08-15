@@ -18,6 +18,7 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiHeader,
   ApiNotFoundResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -25,12 +26,15 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ConcurrencyVersion } from '../../common/decorators/concurrency-version.decorator';
+import { Idempotent } from '../../common/idempotency/idempotent.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { CreateFamilyEventDto } from './dto/create-family-event.dto';
 import { FamilyEventResponseDto } from './dto/family-event-response.dto';
 import { FamilyEventsQueryDto } from './dto/family-events-query.dto';
 import { PaginatedFamilyEventsResponseDto } from './dto/paginated-family-events-response.dto';
+import { UpdateFamilyEventDto } from './dto/update-family-event.dto';
 import { FamilyEventsService } from './family-events.service';
 
 @ApiTags('family events')
@@ -41,6 +45,7 @@ export class FamilyEventsController {
   constructor(private readonly eventsService: FamilyEventsService) {}
 
   @Post()
+  @Idempotent('family-events.create')
   @ApiOperation({ summary: 'Propose a new event to the partner' })
   @ApiCreatedResponse({ type: FamilyEventResponseDto })
   @ApiBadRequestResponse({ description: 'The event date is not in the future' })
@@ -72,6 +77,29 @@ export class FamilyEventsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<FamilyEventResponseDto> {
     return this.eventsService.findOne(id, user.id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update and re-propose an event created by the current user' })
+  @ApiOkResponse({ type: FamilyEventResponseDto })
+  @ApiBadRequestResponse({
+    description: 'No fields were provided or the date is not in the future',
+  })
+  @ApiForbiddenResponse({ description: 'Only the event creator can update it' })
+  @ApiNotFoundResponse({ description: 'Event does not exist in the current user family' })
+  @ApiConflictResponse({ description: 'The supplied version is stale' })
+  @ApiHeader({
+    name: 'If-Match',
+    required: false,
+    description: 'Current resource version. Omit for backward-compatible last-write-wins behavior.',
+  })
+  updateFamilyEvent(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateFamilyEventDto,
+    @ConcurrencyVersion() expectedVersion?: number,
+  ): Promise<FamilyEventResponseDto> {
+    return this.eventsService.update(id, user.id, dto, expectedVersion);
   }
 
   @Patch(':id/confirm')

@@ -1,26 +1,27 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { FamilyMembershipService } from '../family-members/family-membership.service';
 import { FamilyResponseDto } from './dto/family-response.dto';
 
 @Injectable()
 export class FamiliesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly membership: FamilyMembershipService,
+  ) {}
 
   async findMine(userId: string): Promise<FamilyResponseDto> {
-    const membership = await this.prisma.familyMember.findUnique({
-      where: { userId },
+    const { familyId } = await this.membership.requireMembership(userId);
+    const family = await this.prisma.family.findUnique({
+      where: { id: familyId },
       include: {
-        family: {
-          include: {
-            members: {
-              include: { user: true },
-              orderBy: { joinedAt: 'asc' },
-            },
-          },
+        members: {
+          include: { user: true },
+          orderBy: { joinedAt: 'asc' },
         },
       },
     });
-    if (!membership) throw new NotFoundException('You do not belong to a family');
-    return FamilyResponseDto.fromEntity(membership.family);
+    if (!family) throw new NotFoundException('Family not found');
+    return FamilyResponseDto.fromEntity(family);
   }
 }

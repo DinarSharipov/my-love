@@ -1,7 +1,7 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
-  ApiNotFoundResponse,
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -22,7 +22,7 @@ export class FamiliesController {
   @Get('me')
   @ApiOperation({ summary: 'Get the current user family' })
   @ApiOkResponse({ type: FamilyResponseDto })
-  @ApiNotFoundResponse({ description: 'The current user does not belong to a family' })
+  @ApiForbiddenResponse({ description: 'An active family membership is required' })
   findMyFamily(@CurrentUser() user: AuthenticatedUser): Promise<FamilyResponseDto> {
     return this.familiesService.findMine(user.id);
   }

@@ -17,14 +17,16 @@ export class FamilyEventResponseDto {
   @ApiProperty({ format: 'uuid' }) id: string;
   @ApiProperty({ format: 'uuid' }) familyId: string;
   @ApiProperty() name: string;
-  @ApiPropertyOptional({ nullable: true }) description: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) description: string | null;
   @ApiProperty({ format: 'date-time' }) scheduledAt: Date;
   @ApiProperty() location: string;
   @ApiProperty({ enum: FamilyEventStatus }) status: FamilyEventStatus;
   @ApiProperty({ type: UserResponseDto }) proposedBy: UserResponseDto;
   @ApiPropertyOptional({ type: UserResponseDto, nullable: true })
   respondedBy: UserResponseDto | null;
-  @ApiPropertyOptional({ nullable: true }) respondedAt: Date | null;
+  @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true })
+  respondedAt: Date | null;
+  @ApiProperty({ minimum: 1 }) version: number;
   @ApiProperty() createdAt: Date;
   @ApiProperty() updatedAt: Date;
 
@@ -44,6 +46,7 @@ export class FamilyEventResponseDto {
       proposedBy: UserResponseDto.fromEntity(event.proposedBy),
       respondedBy: event.respondedBy ? UserResponseDto.fromEntity(event.respondedBy) : null,
       respondedAt: event.respondedAt,
+      version: event.version,
       createdAt: event.createdAt,
       updatedAt: event.updatedAt,
     };

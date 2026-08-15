@@ -1,10 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { PaginationResponseDto } from '../../../common/dto/pagination-response.dto';
 import { FamilyEventResponseDto } from './family-event-response.dto';
 
-export class PaginatedFamilyEventsResponseDto {
+export class PaginatedFamilyEventsResponseDto extends PaginationResponseDto {
   @ApiProperty({ type: [FamilyEventResponseDto] }) data: FamilyEventResponseDto[];
-  @ApiProperty() total: number;
-  @ApiProperty() page: number;
-  @ApiProperty() limit: number;
-  @ApiProperty() totalPages: number;
 }

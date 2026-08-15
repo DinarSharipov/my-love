@@ -15,6 +15,7 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiHeader,
   ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -22,6 +23,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ConcurrencyVersion } from '../../common/decorators/concurrency-version.decorator';
+import { Idempotent } from '../../common/idempotency/idempotent.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { CreateFirstDateDto } from './dto/create-first-date.dto';
@@ -37,6 +40,7 @@ export class FirstDateController {
   constructor(private readonly firstDateService: FirstDateService) {}
 
   @Post()
+  @Idempotent('first-date.create')
   @ApiOperation({ summary: 'Create the first date of the current family' })
   @ApiCreatedResponse({ type: FirstDateResponseDto })
   @ApiConflictResponse({ description: 'The first date already exists' })
@@ -63,11 +67,18 @@ export class FirstDateController {
   @ApiBadRequestResponse({ description: 'At least one field must be provided' })
   @ApiNotFoundResponse({ description: 'The first date does not exist' })
   @ApiForbiddenResponse({ description: 'The current user does not belong to a family' })
+  @ApiConflictResponse({ description: 'The supplied version is stale' })
+  @ApiHeader({
+    name: 'If-Match',
+    required: false,
+    description: 'Current resource version. Omit for backward-compatible last-write-wins behavior.',
+  })
   updateFirstDate(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: UpdateFirstDateDto,
+    @ConcurrencyVersion() expectedVersion?: number,
   ): Promise<FirstDateResponseDto> {
-    return this.firstDateService.update(user.id, dto);
+    return this.firstDateService.update(user.id, dto, expectedVersion);
   }
 
   @Delete()

@@ -1,0 +1,19 @@
+name: my-love-e2e
+
+services:
+  postgres-e2e:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: my_love_test
+      POSTGRES_USER: my_love_test
+      POSTGRES_PASSWORD: my_love_test
+    ports:
+      - "55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U my_love_test -d my_love_test"]
+      interval: 1s
+      timeout: 3s
+      retries: 20
+

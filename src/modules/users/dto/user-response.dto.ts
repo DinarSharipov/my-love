@@ -7,9 +7,10 @@ export class UserResponseDto {
   @ApiProperty({ example: 'Иванов' }) lastName: string;
   @ApiProperty({ example: 'ivan@example.com' }) email: string;
   @ApiProperty({ enum: Gender }) gender: Gender;
-  @ApiPropertyOptional({ nullable: true }) description: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) description: string | null;
   @ApiProperty({ type: String, format: 'date', example: '1995-05-20' }) birthDate: Date;
-  @ApiPropertyOptional({ nullable: true, example: '+79991234567' }) phone: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, example: '+79991234567' })
+  phone: string | null;
   @ApiProperty() createdAt: Date;
 
   static fromEntity(user: User): UserResponseDto {
