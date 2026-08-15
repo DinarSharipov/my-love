@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim AS base
+FROM node:24.12.0-bookworm-slim AS base
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openssl \
     && rm -rf /var/lib/apt/lists/*
@@ -12,7 +12,7 @@ FROM dependencies AS build
 COPY prisma ./prisma
 COPY nest-cli.json tsconfig*.json ./
 COPY src ./src
-RUN npx prisma generate && npm run build && npm prune --omit=dev
+RUN npx prisma generate && npm run build
 
 FROM base AS production
 WORKDIR /app

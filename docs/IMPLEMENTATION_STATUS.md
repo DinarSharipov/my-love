@@ -16,7 +16,10 @@ work сверять записи ниже с фактическими schema/con
 - Последний завершённый срез: backend Telegram account linking contract.
 - Этап 0 и этап 1 backend закрыты по текущему объёму roadmap.
 - Последний завершённый срез: hardened Telegram linking contract и outbox delivery transport.
-- Следующий срез: подключить отдельный Telegram bot/gateway к exchange и HTTP delivery contract.
+- Последний завершённый срез: отдельный Telegram bot/gateway для webhook-команд и delivery.
+- Последний завершённый инфраструктурный срез: production CI/CD через GitHub Actions,
+  GHCR и Docker Compose на отдельном сервере.
+- Следующий срез: quiet-hours scheduling для Telegram/email outbox delivery.
 
 ## Реализовано
 
@@ -25,6 +28,9 @@ work сверять записи ниже с фактическими schema/con
 - NestJS/TypeScript, Prisma/PostgreSQL, URI API `/api/v1`, Swagger и DTO validation.
 - Joi env validation, Helmet/CORS, Pino с request ID/redaction, глобальный rate limit.
 - Docker Compose, health API+DB, production image и изолированная E2E PostgreSQL.
+- Production deployment: push в `main` запускает lint/unit/build, публикует immutable
+  image в приватный GHCR, подключается к серверу отдельным SSH deploy-key, применяет
+  Prisma migrations, обновляет Compose и проверяет health. PostgreSQL не публикует порт.
 - Совместимый error envelope с `code`, `details`, `requestId`.
 - Общие pagination/date/time/timezone/money contracts.
 - Optional optimistic concurrency (`If-Match`) для first date, events и профиля.
@@ -106,6 +112,12 @@ work сверять записи ниже с фактическими schema/con
   для активной connection с включённым каналом. Outbox поддерживает безопасный logging
   adapter и retryable HTTP adapter к отдельному bot/gateway; chat ID не хранится в outbox,
   connection/preference повторно проверяются перед delivery, идентификаторы и content не логируются.
+- Telegram bot/gateway: отдельный Nest entrypoint без доступа к БД принимает защищённый
+  Telegram webhook, поддерживает `/start`/`/link`, `/status`, `/notifications`, `/unlink`,
+  вызывает backend integration API и отправляет outbox delivery через Telegram Bot API.
+  Internal endpoint защищён Bearer secret, webhook — Telegram secret-token; команды разрешены
+  только в private chat. Compose-профиль `telegram` и deployment-инструкция находятся в
+  `docs/TELEGRAM_GATEWAY.md`.
 - Retention worker: после `deletionScheduledAt` неактивный аккаунт может быть
   анонимизирован (имя, email, описание, телефон и дата рождения), при этом
   membership и shared family data сохраняются, а ссылки на пользователя остаются
@@ -136,10 +148,12 @@ work сверять записи ниже с фактическими schema/con
 ## Проверки на момент сверки
 
 - `npm run lint` — passed.
-- `npm test -- --runInBand` — 9 suites / 28 tests passed.
+- `npm test -- --runInBand` — 10 suites / 32 tests passed.
 - `npm run build` — passed.
 - `npm run test:e2e:verify` — 9 scenarios passed на чистой БД; все 25 миграций
   последовательно применились.
+- Production Docker image собран; оба entrypoint (`dist/main.js` и
+  `dist/telegram-gateway/main.js`) присутствуют.
 - Рабочий Docker API: `http://localhost:5001`, health healthy, schema up to date.
 
 ## Известные пробелы и решения
@@ -156,8 +170,9 @@ work сверять записи ниже с фактическими schema/con
 - Запланированная деактивация безопасно блокирует доступ, но не удаляет данные до
   отдельного cleanup job с утверждённой policy.
 - Нет cursor pagination и calendar projection для будущих доменов.
-- Внешний Telegram bot/gateway пока не входит в этот repository: backend HTTP adapter
-  готов, но production delivery требует настроить `TELEGRAM_PROVIDER=http`, URL и secret.
+- Telegram bot/gateway реализован, но production deployment должен предоставить публичный
+  HTTPS endpoint, создать bot через BotFather, зарегистрировать webhook и задать secrets;
+  эти внешние операции намеренно не выполняются из repository.
 - Quiet hours пока хранятся как preferences, но отложенная Telegram/email доставка по ним
   ещё не рассчитывается; до подключения production transport это нужно завершить.
 - Public user registry оставлен ради обратной совместимости и требует privacy-решения.
@@ -209,3 +224,5 @@ work сверять записи ниже с фактическими schema/con
 | 2026-08-15 | Notification preferences | миграция `20260815180000_add_notification_preferences`, GET/PATCH preferences и HH:mm validation | generate, lint, 25 unit, build, diff-check | notification producers |
 | 2026-08-15 | Notification producers | общий producer для family members, события задач и shopping с учётом in-app preferences | generate, lint, unit, build, diff-check | family events и email-канал |
 | 2026-08-15 | Telegram delivery hardening | validated DTO/Swagger, atomic single-use exchange, optional integration boundary, token cleanup, `telegram.notify` outbox и log/HTTP providers | generate, lint, 28 unit, 9 e2e, build, 25 migrations on clean DB | внешний Telegram bot/gateway и quiet-hours scheduling |
+| 2026-08-15 | Telegram bot/gateway | отдельный Nest entrypoint, Telegram webhook/Bot API client, link/status/notifications/unlink commands, защищённый internal delivery, Compose profile | lint, 32 unit, 9 e2e, build, Docker production image, diff-check | quiet-hours scheduling для Telegram/email |
+| 2026-08-15 | Production CI/CD | GitHub Actions test/build/GHCR/deploy pipeline, production Compose, отдельный deploy user/key, migration и health gates | lint, 32 unit, build, Compose config, server SSH/Docker smoke-check | merge PR и проверить первый production workflow |
