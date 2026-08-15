@@ -7,17 +7,26 @@
 
 - [x] ADR семейного фундамента: роли, lifecycle, настройки и судьба shared data.
 - [x] `FamilyStatus`, `FamilyMemberRole`, timezone/locale/default currency и
-  database-level лимит двух партнёров с backfill существующих данных.
+      database-level лимит двух партнёров с backfill существующих данных.
 - [x] Общий `FamilyMembershipService`; `families`, `family-events` и `first-date`
-  переведены на единую policy, события используют timezone семьи.
+      переведены на единую policy, события используют timezone семьи.
 - [x] Unit-тесты membership policy и чистая воспроизводимая Docker-сборка.
 - [x] Изолированный E2E harness и security regression critical path для auth,
-  registry, invitations, family ownership, events и session revocation.
+      registry, invitations, family ownership, events и session revocation.
 - [x] Совместимые error envelope/request ID и общие pagination/date/money contracts.
 - [x] Opt-in optimistic concurrency для `first-date` и `family-events` через `version`/`If-Match`.
 - [x] Opt-in idempotency с payload hash/result replay для существующих критических команд.
+- [x] Закрытые одноразовые приглашения по точному email: hash-токен, cooldown, revoke и accept после регистрации.
+- [x] `GET/PATCH /users/me`: настройки профиля и opt-in optimistic concurrency.
+- [x] Смена пароля с проверкой текущего и управление отзываемыми сессиями с metadata/last-seen.
+- [x] Transactional outbox с PostgreSQL worker/retry и безопасным development email adapter.
+- [x] Forgot/reset password: enumeration-safe request, one-time hash token, encrypted outbox link и отзыв всех сессий.
+- [x] Локальный SMTP через Mailpit и SMTP adapter для outbox; production provider требует отдельных credentials.
+- [x] Смена email: re-auth текущим паролем, одноразовое подтверждение нового адреса через encrypted outbox link и отзыв всех sessions.
+- [x] Базовый family lifecycle: выход участника и архивирование активной семьи
+      партнёром с сохранением shared data.
 - [ ] Cursor pagination; финансовые команды должны связывать domain write и idempotency result одной транзакцией.
-- [ ] Audit log и transactional outbox.
+- [x] Audit log и transactional outbox.
 
 ## 1. Целевая модель и границы
 
@@ -194,13 +203,18 @@ Backend обслуживает приватное пространство уж�
 - Forgot/reset password: одноразовый hash-токен, короткий TTL, single use,
   одинаковый ответ для существующего/несуществующего email, письмо через outbox,
   после reset — отзыв всех сессий.
-- Смена email через подтверждение нового адреса; уникальность и нормализация email.
+- [x] Смена email через подтверждение нового адреса; уникальность и нормализация email.
 - Список сессий с device/IP/lastSeenAt, отзыв одной и всех остальных сессий;
   очистка истёкших сессий job-ом.
 - Перейти к короткому access token + rotating refresh token family с reuse
   detection либо явно принять текущую длительную JWT-модель как временный риск.
-- Деактивация/удаление аккаунта: re-auth, grace period, отмена удаления, экспорт,
-  обработка membership и последующее удаление/анонимизация по retention policy.
+- [x] Деактивация аккаунта: re-auth, configurable grace period, одноразовая отмена
+      удаления по email и безопасное поведение membership (сохраняется во время grace period).
+- [x] Account export текущего пользователя без секретов; opt-in анонимизация
+      после grace period с сохранением shared data и явной policy
+  для shared data после окончания grace period.
+- [x] Периодический cleanup истёкших sessions, одноразовых auth-токенов и
+  invitations с защитой от overlapping runs.
 
 ### 1.3. Единый календарный backend
 
@@ -397,11 +411,19 @@ wellbeing и children следует начинать только после г
 4. [x] E2E harness и security regression suite существующих endpoints.
 5. [x] Error/request ID/pagination/date/money, concurrency и базовая idempotency.
 6. [ ] Следующий вертикальный срез этапа 1: закрытое email/link invitation;
-   внутри него добавить минимальный transactional outbox и email provider contract.
+       внутри него добавить минимальный transactional outbox и email provider contract.
 7. [ ] Forgot/reset password через тот же outbox.
 8. [ ] Profile/password/email/session-management API.
-9. [ ] Reminders/recurrence и единая calendar projection для готового frontend-календаря.
-10. [ ] Завершить общие visibility/audit/jobs задачи этапа 0 до финансов и wellbeing.
+9. [x] Reminders/recurrence и единая calendar projection для готового frontend-календаря
+       пока ограничены существующими family events; расширение переносится в этап 2.
+10. [x] Завершить общие visibility/audit/jobs задачи этапа 0 до финансов и wellbeing.
+
+### Следующий вертикальный срез
+
+Этап 2 начинается с `tasks` и `task-routines`: разовые и повторяющиеся задачи,
+назначение партнёру/семье, completion/reopen, optimistic concurrency, audit и
+идемпотентная генерация повторений. Shopping и notifications идут после базового
+task-сценария, чтобы не смешивать несколько доменов в одной миграции.
 
 После каждой задачи обновлять `IMPLEMENTATION_STATUS.md`, OpenAPI и generated
 frontend client. Не объединять весь этап в одну миграцию или один pull request.

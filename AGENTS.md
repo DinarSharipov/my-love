@@ -18,6 +18,7 @@ Backend for a family-management app: household tasks, budgets, events, reminders
 - Preserve consistent HTTP errors, authorization, logging, pagination, and date/time handling used by existing modules.
 - Enforce authorization and family ownership server-side. Never trust user IDs or family IDs supplied by the client without checking access.
 - Frontend repository: `/Users/dinarsaripov/projects/my-love-frontend`. Before changing an endpoint or DTO, inspect its RTK Query usage and avoid silent breaking changes; coordinate or update the contract when required.
+- The frontend repository is read-only for backend agents. Never create, edit, format, generate, delete, or commit files in `/Users/dinarsaripov/projects/my-love-frontend`; a separate agent owns it. Frontend files may only be inspected to verify existing contracts. Record required frontend follow-up in the backend status instead of changing the frontend.
 
 ## Database and configuration
 
@@ -33,5 +34,6 @@ Backend for a family-management app: household tasks, budgets, events, reminders
 
 ## Continuity
 
-- Before substantial work, read `/Users/dinarsaripov/projects/my-love-frontend/docs/IMPLEMENTATION_STATUS.md`; the full product scope is in the adjacent `PRODUCT_ROADMAP.md`.
-- After each backend slice, record migrations, API changes, tests, decisions, blockers, and the recommended next slice in that status file.
+- Before substantial work, read this repository's `docs/IMPLEMENTATION_STATUS.md`. Use the frontend `docs/PRODUCT_ROADMAP.md` only as read-only product context when needed.
+- After each backend slice, update `docs/IMPLEMENTATION_STATUS.md` in this repository with migrations, API changes, tests, decisions, blockers, compatibility notes, and the recommended next slice.
+- Treat the backend status file as the handoff source of truth for new backend agents; verify it against the code before relying on stale roadmap prose.

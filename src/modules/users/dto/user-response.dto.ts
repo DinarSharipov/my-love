@@ -11,6 +11,9 @@ export class UserResponseDto {
   @ApiProperty({ type: String, format: 'date', example: '1995-05-20' }) birthDate: Date;
   @ApiPropertyOptional({ type: String, nullable: true, example: '+79991234567' })
   phone: string | null;
+  @ApiProperty({ example: 'ru-RU' }) locale: string;
+  @ApiProperty({ example: 'Europe/Moscow' }) timeZone: string;
+  @ApiProperty({ minimum: 1 }) version: number;
   @ApiProperty() createdAt: Date;
 
   static fromEntity(user: User): UserResponseDto {
@@ -23,6 +26,9 @@ export class UserResponseDto {
       description: user.description,
       birthDate: user.birthDate,
       phone: user.phone,
+      locale: user.locale,
+      timeZone: user.timeZone,
+      version: user.version,
       createdAt: user.createdAt,
     };
   }

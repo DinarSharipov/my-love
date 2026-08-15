@@ -13,6 +13,13 @@ import { HealthModule } from './modules/health/health.module';
 import { FamiliesModule } from './modules/families/families.module';
 import { FamilyEventsModule } from './modules/family-events/family-events.module';
 import { FirstDateModule } from './modules/first-date/first-date.module';
+import { OutboxModule } from './common/outbox/outbox.module';
+import { MaintenanceModule } from './common/maintenance/maintenance.module';
+import { AuditModule } from './common/audit/audit.module';
+import { TasksModule } from './modules/tasks/tasks.module';
+import { ShoppingModule } from './modules/shopping/shopping.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { NotificationProducerModule } from './common/notifications/notification-producer.module';
 
 @Module({
   imports: [
@@ -35,6 +42,8 @@ import { FirstDateModule } from './modules/first-date/first-date.module';
           redact: [
             'req.headers.authorization',
             'req.body.password',
+            'req.body.currentPassword',
+            'req.body.newPassword',
             'req.body.token',
             'res.headers["set-cookie"]',
           ],
@@ -44,6 +53,13 @@ import { FirstDateModule } from './modules/first-date/first-date.module';
     }),
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 100 }]),
     DatabaseModule,
+    OutboxModule,
+    MaintenanceModule,
+    AuditModule,
+    TasksModule,
+    ShoppingModule,
+    NotificationsModule,
+    NotificationProducerModule,
     AuthModule,
     FamiliesModule,
     FamilyEventsModule,

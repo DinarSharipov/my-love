@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Gender, User } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../database/prisma.service';
+import { OutboxService } from '../../common/outbox/outbox.service';
 import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
 
@@ -17,7 +18,13 @@ describe('AuthService', () => {
     description: null,
     birthDate: new Date('1995-05-20'),
     phone: null,
+    locale: 'ru-RU',
+    timeZone: 'Europe/Moscow',
+    version: 1,
     isActive: true,
+    deletionRequestedAt: null,
+    deletionScheduledAt: null,
+    retentionAnonymizedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -39,6 +46,7 @@ describe('AuthService', () => {
       prisma as unknown as PrismaService,
       jwt as unknown as JwtService,
       config as unknown as ConfigService,
+      {} as OutboxService,
     );
 
     const result = await service.login({ email: user.email, password: 'StrongPassword123!' });
@@ -56,6 +64,7 @@ describe('AuthService', () => {
       prisma as unknown as PrismaService,
       {} as JwtService,
       {} as ConfigService,
+      {} as OutboxService,
     );
 
     await service.logout('token-hash');

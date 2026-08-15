@@ -31,6 +31,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Token is invalid or has been revoked');
     }
 
+    await this.prisma.authSession.update({
+      where: { id: session.id },
+      data: { lastSeenAt: new Date() },
+    });
+
     return { id: session.user.id, email: session.user.email, tokenHash };
   }
 }

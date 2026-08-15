@@ -195,7 +195,7 @@ export class FamilyInvitationsService {
     const tokenHash = this.hashToken(dto.token);
 
     try {
-      const invitation = await this.prisma.$transaction(
+      const result = await this.prisma.$transaction(
         async (tx) => {
           const current = await tx.privateFamilyInvitation.findUnique({ where: { tokenHash } });
           if (!current) throw new NotFoundException('Invitation not found');
@@ -280,16 +280,16 @@ export class FamilyInvitationsService {
             where: { id: current.id },
           });
           if (!updated) throw new NotFoundException('Invitation not found');
-          this.logger.log({
-            event: 'private_family_invitation_accepted',
-            familyId: family.id,
-            invitationId: current.id,
-          });
-          return updated;
+          return { familyId: family.id, invitation: updated };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       );
-      return PrivateFamilyInvitationResponseDto.fromEntity(invitation);
+      this.logger.log({
+        event: 'private_family_invitation_accepted',
+        familyId: result.familyId,
+        invitationId: result.invitation.id,
+      });
+      return PrivateFamilyInvitationResponseDto.fromEntity(result.invitation);
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&

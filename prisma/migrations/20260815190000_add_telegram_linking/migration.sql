@@ -1,0 +1,10 @@
+ALTER TABLE "notification_preferences" ADD COLUMN "telegram_enabled" BOOLEAN NOT NULL DEFAULT false;
+CREATE TABLE "telegram_connections" ("id" UUID NOT NULL, "user_id" UUID NOT NULL, "telegram_user_id" VARCHAR(64) NOT NULL, "chat_id" VARCHAR(64) NOT NULL, "status" VARCHAR(20) NOT NULL DEFAULT 'ACTIVE', "linked_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "revoked_at" TIMESTAMP(3), "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updated_at" TIMESTAMP(3) NOT NULL, CONSTRAINT "telegram_connections_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "telegram_connections_user_id_key" ON "telegram_connections"("user_id");
+CREATE UNIQUE INDEX "telegram_connections_telegram_user_id_key" ON "telegram_connections"("telegram_user_id");
+CREATE UNIQUE INDEX "telegram_connections_chat_id_key" ON "telegram_connections"("chat_id");
+ALTER TABLE "telegram_connections" ADD CONSTRAINT "telegram_connections_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+CREATE TABLE "telegram_link_tokens" ("id" UUID NOT NULL, "user_id" UUID NOT NULL, "token_hash" VARCHAR(64) NOT NULL, "expires_at" TIMESTAMP(3) NOT NULL, "used_at" TIMESTAMP(3), "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "telegram_link_tokens_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "telegram_link_tokens_token_hash_key" ON "telegram_link_tokens"("token_hash");
+CREATE INDEX "telegram_link_tokens_user_id_expires_at_idx" ON "telegram_link_tokens"("user_id", "expires_at");
+ALTER TABLE "telegram_link_tokens" ADD CONSTRAINT "telegram_link_tokens_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;

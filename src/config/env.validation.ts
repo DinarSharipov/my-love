@@ -10,6 +10,23 @@ export const envValidationSchema = Joi.object({
     .uri({ scheme: ['postgresql', 'postgres'] })
     .required(),
   JWT_ACCESS_SECRET: Joi.string().min(32).required(),
+  TELEGRAM_INTEGRATION_ENABLED: Joi.boolean().default(false),
+  TELEGRAM_INTEGRATION_SECRET: Joi.string()
+    .min(32)
+    .when('TELEGRAM_INTEGRATION_ENABLED', {
+      is: true,
+      then: Joi.required(),
+      otherwise: Joi.optional(),
+    })
+    .when('TELEGRAM_PROVIDER', { is: 'http', then: Joi.required() }),
+  TELEGRAM_PROVIDER: Joi.string().valid('log', 'http').default('log'),
+  TELEGRAM_DELIVERY_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .when('TELEGRAM_PROVIDER', {
+      is: 'http',
+      then: Joi.required(),
+      otherwise: Joi.optional(),
+    }),
   JWT_ACCESS_EXPIRES_IN: Joi.string()
     .pattern(/^\d+[smhdw]$/)
     .default('7d'),
@@ -19,6 +36,31 @@ export const envValidationSchema = Joi.object({
   PRIVATE_FAMILY_INVITATION_COOLDOWN: Joi.string()
     .pattern(/^\d+[smhdw]$/)
     .default('1m'),
+  OUTBOX_WORKER_ENABLED: Joi.boolean().default(true),
+  OUTBOX_POLL_INTERVAL_MS: Joi.number().integer().min(250).default(5000),
+  OUTBOX_LOCK_TIMEOUT_MS: Joi.number().integer().min(1000).default(300000),
+  OUTBOX_MAX_ATTEMPTS: Joi.number().integer().min(1).max(20).default(5),
+  OUTBOX_ENCRYPTION_KEY: Joi.string().min(32).optional(),
+  CLEANUP_WORKER_ENABLED: Joi.boolean().default(true),
+  CLEANUP_POLL_INTERVAL_MS: Joi.number().integer().min(1000).default(3600000),
+  RETENTION_WORKER_ENABLED: Joi.boolean().default(false),
+  EMAIL_PROVIDER: Joi.string().valid('log', 'smtp').default('log'),
+  SMTP_HOST: Joi.string().hostname().default('127.0.0.1'),
+  SMTP_PORT: Joi.number().port().default(1025),
+  SMTP_SECURE: Joi.boolean().default(false),
+  SMTP_USERNAME: Joi.string().allow('').optional(),
+  SMTP_PASSWORD: Joi.string().allow('').optional(),
+  SMTP_FROM_EMAIL: Joi.string().email().default('no-reply@example.com'),
+  SMTP_REPLY_TO: Joi.string().email().optional(),
+  PASSWORD_RESET_EXPIRES_IN: Joi.string()
+    .pattern(/^\d+[smhdw]$/)
+    .default('30m'),
+  EMAIL_CHANGE_EXPIRES_IN: Joi.string()
+    .pattern(/^\d+[smhdw]$/)
+    .default('30m'),
+  ACCOUNT_DELETION_GRACE_PERIOD: Joi.string()
+    .pattern(/^\d+[smhdw]$/)
+    .default('30d'),
   FRONTEND_APP_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
     .default('http://localhost:5173'),

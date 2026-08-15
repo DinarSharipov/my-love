@@ -1,7 +1,9 @@
 import { INestApplication, ValidationPipe, VersioningType } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { FamilyMemberRole, FamilyStatus, Gender } from '@prisma/client';
+import { FamilyMemberRole, FamilyStatus, Gender, OutboxEventStatus } from '@prisma/client';
+import { createHash, randomBytes } from 'node:crypto';
 import request from 'supertest';
+import { OutboxService } from '../src/common/outbox/outbox.service';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/database/prisma.service';
 
@@ -44,6 +46,25 @@ interface ApiErrorResult {
   message: string | string[];
   details?: { messages?: string[] };
   requestId: string;
+}
+
+interface UserProfileResult {
+  id: string;
+  firstName: string;
+  locale: string;
+  timeZone: string;
+  version: number;
+}
+
+interface SessionResult {
+  id: string;
+  isCurrent: boolean;
+  ipAddress: string | null;
+  userAgent: string | null;
+}
+
+interface AccountDeletionRequestResult {
+  scheduledFor: string;
 }
 
 describe('API security regression (e2e)', () => {
@@ -323,5 +344,342 @@ describe('API security regression (e2e)', () => {
       .set(auth(recipient.accessToken))
       .expect(200);
     expect((family.body as FamilyResult).members).toHaveLength(2);
+  });
+
+  it('reads and updates only the authenticated profile with optional concurrency', async () => {
+    const owner = await register('ProfileOwner');
+
+    const current = await request(httpServer)
+      .get('/api/v1/users/me')
+      .set(auth(owner.accessToken))
+      .expect(200);
+    const profile = current.body as UserProfileResult;
+    expect(profile).toMatchObject({
+      id: owner.user.id,
+      locale: 'ru-RU',
+      timeZone: 'Europe/Moscow',
+      version: 1,
+    });
+
+    const updated = await request(httpServer)
+      .patch('/api/v1/users/me')
+      .set(auth(owner.accessToken))
+      .set('If-Match', String(profile.version))
+      .send({ firstName: 'Updated', locale: 'en-US', timeZone: 'Asia/Tokyo' })
+      .expect(200);
+    expect(updated.body).toMatchObject({
+      id: owner.user.id,
+      firstName: 'Updated',
+      locale: 'en-US',
+      timeZone: 'Asia/Tokyo',
+      version: 2,
+    });
+
+    const stale = await request(httpServer)
+      .patch('/api/v1/users/me')
+      .set(auth(owner.accessToken))
+      .set('If-Match', String(profile.version))
+      .send({ firstName: 'Stale' })
+      .expect(409);
+    expect((stale.body as ApiErrorResult).code).toBe('VERSION_CONFLICT');
+
+    await request(httpServer)
+      .patch('/api/v1/users/me')
+      .send({ firstName: 'Anonymous' })
+      .expect(401);
+  });
+
+  it('changes the password and manages revocable user sessions', async () => {
+    const owner = await register('SessionOwner');
+    const secondLogin = await request(httpServer)
+      .post('/api/v1/auth/login')
+      .set('User-Agent', 'MyLove E2E second device')
+      .send({ email: owner.user.email, password: 'StrongPassword123!' })
+      .expect(200);
+    let secondToken = (secondLogin.body as AuthResult).accessToken;
+
+    const listed = await request(httpServer)
+      .get('/api/v1/auth/sessions')
+      .set(auth(owner.accessToken))
+      .expect(200);
+    const sessions = listed.body as SessionResult[];
+    expect(sessions).toHaveLength(2);
+    expect(sessions.filter((session) => session.isCurrent)).toHaveLength(1);
+    expect(sessions.some((session) => session.userAgent === 'MyLove E2E second device')).toBe(true);
+
+    const secondSession = sessions.find((session) => !session.isCurrent);
+    expect(secondSession).toBeDefined();
+    await request(httpServer)
+      .delete(`/api/v1/auth/sessions/${secondSession?.id}`)
+      .set(auth(owner.accessToken))
+      .expect(204);
+    await request(httpServer).get('/api/v1/auth/sessions').set(auth(secondToken)).expect(401);
+
+    const replacementLogin = await request(httpServer)
+      .post('/api/v1/auth/login')
+      .send({ email: owner.user.email, password: 'StrongPassword123!' })
+      .expect(200);
+    secondToken = (replacementLogin.body as AuthResult).accessToken;
+
+    await request(httpServer)
+      .patch('/api/v1/auth/password')
+      .set(auth(owner.accessToken))
+      .send({ currentPassword: 'WrongPassword123!', newPassword: 'NewStrongPassword123!' })
+      .expect(403);
+
+    await request(httpServer)
+      .patch('/api/v1/auth/password')
+      .set(auth(owner.accessToken))
+      .send({
+        currentPassword: 'StrongPassword123!',
+        newPassword: 'NewStrongPassword123!',
+      })
+      .expect(204);
+
+    await request(httpServer).get('/api/v1/auth/sessions').set(auth(owner.accessToken)).expect(200);
+    await request(httpServer).get('/api/v1/auth/sessions').set(auth(secondToken)).expect(401);
+
+    await request(httpServer)
+      .post('/api/v1/auth/login')
+      .send({ email: owner.user.email, password: 'StrongPassword123!' })
+      .expect(401);
+    await request(httpServer)
+      .post('/api/v1/auth/login')
+      .send({ email: owner.user.email, password: 'NewStrongPassword123!' })
+      .expect(200);
+  });
+
+  it('delivers a committed outbox email event exactly once', async () => {
+    const queued = await prisma.outboxEvent.create({
+      data: {
+        type: 'email.send',
+        payload: { to: 'recipient@e2e.test', subject: 'E2E', text: 'Message' },
+      },
+    });
+    const outbox = app.get(OutboxService);
+
+    await expect(outbox.processAvailable()).resolves.toBe(1);
+    const delivered = await prisma.outboxEvent.findUnique({ where: { id: queued.id } });
+    expect(delivered).toMatchObject({ status: OutboxEventStatus.DELIVERED, attempts: 0 });
+
+    await expect(outbox.processAvailable()).resolves.toBe(0);
+  });
+
+  it('requests and confirms a one-time password reset without exposing the reset link', async () => {
+    const account = await register('PasswordReset');
+    const unknownEmail = 'unknown-password-reset@e2e.test';
+
+    const knownRequest = await request(httpServer)
+      .post('/api/v1/auth/password-reset/request')
+      .send({ email: `  ${account.user.email.toUpperCase()}  ` })
+      .expect(202);
+    const unknownRequest = await request(httpServer)
+      .post('/api/v1/auth/password-reset/request')
+      .send({ email: unknownEmail })
+      .expect(202);
+    expect(knownRequest.body).toEqual(unknownRequest.body);
+
+    const queued = await prisma.outboxEvent.findFirst({
+      where: { type: 'email.send', status: OutboxEventStatus.PENDING },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(queued?.payload).toMatchObject({ to: account.user.email });
+    expect(JSON.stringify(queued?.payload)).toContain('encryptedText');
+    expect(JSON.stringify(queued?.payload)).not.toContain('/reset-password?token=');
+    await app.get(OutboxService).processAvailable();
+
+    const token = randomBytes(32).toString('base64url');
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: account.user.id,
+        tokenHash: createHash('sha256').update(token).digest('hex'),
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+
+    await request(httpServer)
+      .post('/api/v1/auth/password-reset/confirm')
+      .send({ token, newPassword: 'RecoveredStrongPassword123!' })
+      .expect(204);
+    await request(httpServer)
+      .get('/api/v1/auth/sessions')
+      .set(auth(account.accessToken))
+      .expect(401);
+    await request(httpServer)
+      .post('/api/v1/auth/login')
+      .send({ email: account.user.email, password: 'StrongPassword123!' })
+      .expect(401);
+    await request(httpServer)
+      .post('/api/v1/auth/login')
+      .send({ email: account.user.email, password: 'RecoveredStrongPassword123!' })
+      .expect(200);
+    await request(httpServer)
+      .post('/api/v1/auth/password-reset/confirm')
+      .send({ token, newPassword: 'AnotherStrongPassword123!' })
+      .expect(400);
+  });
+
+  it('changes email only after a one-time confirmation and revokes every session', async () => {
+    const account = await register('EmailChange');
+    const newEmail = 'email-change-confirmed@e2e.test';
+
+    await request(httpServer)
+      .post('/api/v1/auth/email-change/request')
+      .set(auth(account.accessToken))
+      .send({ email: newEmail, currentPassword: 'WrongPassword123!' })
+      .expect(403);
+    await request(httpServer)
+      .post('/api/v1/auth/email-change/request')
+      .set(auth(account.accessToken))
+      .send({ email: `  ${newEmail.toUpperCase()}  ` })
+      .expect(400);
+    await request(httpServer)
+      .post('/api/v1/auth/email-change/request')
+      .set(auth(account.accessToken))
+      .send({ email: newEmail, currentPassword: 'StrongPassword123!' })
+      .expect(202);
+
+    const queued = await prisma.outboxEvent.findFirst({
+      where: { type: 'email.send', status: OutboxEventStatus.PENDING },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(queued?.payload).toMatchObject({ to: newEmail });
+    expect(JSON.stringify(queued?.payload)).not.toContain('confirm-email-change?token=');
+
+    const token = randomBytes(32).toString('base64url');
+    await prisma.emailChangeToken.create({
+      data: {
+        userId: account.user.id,
+        requestedEmail: newEmail,
+        tokenHash: createHash('sha256').update(token).digest('hex'),
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    await request(httpServer).post('/api/v1/auth/email-change/confirm').send({ token }).expect(204);
+
+    await request(httpServer).get('/api/v1/users/me').set(auth(account.accessToken)).expect(401);
+    await request(httpServer)
+      .post('/api/v1/auth/login')
+      .send({ email: account.user.email, password: 'StrongPassword123!' })
+      .expect(401);
+    await request(httpServer)
+      .post('/api/v1/auth/login')
+      .send({ email: newEmail, password: 'StrongPassword123!' })
+      .expect(200);
+    await request(httpServer).post('/api/v1/auth/email-change/confirm').send({ token }).expect(400);
+  });
+
+  it('deactivates an account during the deletion grace period and restores it once', async () => {
+    const account = await register('AccountDeletion');
+
+    await request(httpServer)
+      .post('/api/v1/auth/account-deletion/request')
+      .set(auth(account.accessToken))
+      .send({ currentPassword: 'WrongPassword123!' })
+      .expect(403);
+
+    const deletionRequest = await request(httpServer)
+      .post('/api/v1/auth/account-deletion/request')
+      .set(auth(account.accessToken))
+      .send({ currentPassword: 'StrongPassword123!' })
+      .expect(202);
+    expect(
+      new Date((deletionRequest.body as AccountDeletionRequestResult).scheduledFor).getTime(),
+    ).toBeGreaterThan(Date.now());
+
+    const deactivated = await prisma.user.findUnique({ where: { id: account.user.id } });
+    expect(deactivated).toMatchObject({ isActive: false });
+    expect(deactivated?.deletionRequestedAt).not.toBeNull();
+    expect(deactivated?.deletionScheduledAt).not.toBeNull();
+    await request(httpServer).get('/api/v1/users/me').set(auth(account.accessToken)).expect(401);
+    await request(httpServer)
+      .post('/api/v1/auth/login')
+      .send({ email: account.user.email, password: 'StrongPassword123!' })
+      .expect(401);
+
+    const queued = await prisma.outboxEvent.findFirst({
+      where: { type: 'email.send', status: OutboxEventStatus.PENDING },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(queued?.payload).toMatchObject({ to: account.user.email });
+    expect(JSON.stringify(queued?.payload)).not.toContain('cancel-account-deletion?token=');
+
+    const token = randomBytes(32).toString('base64url');
+    await prisma.accountDeletionToken.create({
+      data: {
+        userId: account.user.id,
+        tokenHash: createHash('sha256').update(token).digest('hex'),
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    await request(httpServer)
+      .post('/api/v1/auth/account-deletion/cancel')
+      .send({ token })
+      .expect(204);
+
+    const restored = await prisma.user.findUnique({ where: { id: account.user.id } });
+    expect(restored).toMatchObject({
+      isActive: true,
+      deletionRequestedAt: null,
+      deletionScheduledAt: null,
+    });
+    await request(httpServer)
+      .post('/api/v1/auth/login')
+      .send({ email: account.user.email, password: 'StrongPassword123!' })
+      .expect(200);
+    await request(httpServer)
+      .post('/api/v1/auth/account-deletion/cancel')
+      .send({ token })
+      .expect(400);
+  });
+
+  it('links and unlinks Telegram with a validated one-time token', async () => {
+    const account = await register('TelegramLink');
+
+    await request(httpServer)
+      .post('/api/v1/telegram/link/exchange')
+      .send({ token: 'short', telegramUserId: '', chatId: '' })
+      .expect(400);
+
+    const created = await request(httpServer)
+      .post('/api/v1/telegram/link-token')
+      .set(auth(account.accessToken))
+      .expect(201);
+    const link = created.body as { token: string; expiresAt: string };
+    expect(link.token.length).toBeGreaterThanOrEqual(32);
+    expect(new Date(link.expiresAt).getTime()).toBeGreaterThan(Date.now());
+
+    await request(httpServer)
+      .post('/api/v1/telegram/link/exchange')
+      .send({ token: link.token, telegramUserId: 'tg-user-e2e', chatId: 'tg-chat-e2e' })
+      .expect(201)
+      .expect(({ body }: { body: { linked: boolean } }) => expect(body.linked).toBe(true));
+
+    await request(httpServer)
+      .post('/api/v1/telegram/link/exchange')
+      .send({ token: link.token, telegramUserId: 'tg-user-e2e', chatId: 'tg-chat-e2e' })
+      .expect(404);
+
+    const connection = await request(httpServer)
+      .get('/api/v1/telegram/connection')
+      .set(auth(account.accessToken))
+      .expect(200);
+    expect(connection.body).toMatchObject({ telegramUserId: 'tg-user-e2e', status: 'ACTIVE' });
+    expect(connection.body).not.toHaveProperty('chatId');
+
+    await request(httpServer)
+      .get('/api/v1/telegram/integration/connection?telegramUserId=tg-user-e2e')
+      .set('x-telegram-integration-secret', 'invalid-secret-that-is-long-enough')
+      .expect(503);
+
+    await request(httpServer)
+      .delete('/api/v1/telegram/connection')
+      .set(auth(account.accessToken))
+      .expect(204);
+    await request(httpServer)
+      .get('/api/v1/telegram/connection')
+      .set(auth(account.accessToken))
+      .expect(200)
+      .expect(({ body }: { body: { status: string } }) => expect(body.status).toBe('REVOKED'));
   });
 });
