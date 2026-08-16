@@ -11,6 +11,8 @@ import { BudgetsController } from './budgets.controller';
 import { BudgetsService } from './budgets.service';
 import { RecurringPaymentsController } from './recurring-payments.controller';
 import { RecurringPaymentsService } from './recurring-payments.service';
+import { FinancialSummaryController } from './financial-summary.controller';
+import { FinancialSummaryService } from './financial-summary.service';
 
 @Module({
   imports: [FamilyMembersModule],
@@ -20,6 +22,7 @@ import { RecurringPaymentsService } from './recurring-payments.service';
     FinancialCategoriesController,
     BudgetsController,
     RecurringPaymentsController,
+    FinancialSummaryController,
   ],
   providers: [
     WalletsService,
@@ -28,6 +31,7 @@ import { RecurringPaymentsService } from './recurring-payments.service';
     FinancialCategoriesService,
     BudgetsService,
     RecurringPaymentsService,
+    FinancialSummaryService,
   ],
   exports: [WalletsService, RecurringPaymentsService],
 })

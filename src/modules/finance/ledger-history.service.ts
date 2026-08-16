@@ -50,7 +50,11 @@ export class LedgerHistoryService {
     return this.serialize(transaction);
   }
 
-  private async visibleWhere(
+  /**
+   * Shared visibility predicate for finance read models. A transaction is readable
+   * only when every wallet entry belongs to a wallet visible to the caller.
+   */
+  async visibleWhere(
     userId: string,
     familyId: string,
     role: Parameters<WalletsService['visibleTo']>[1],
