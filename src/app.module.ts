@@ -20,6 +20,8 @@ import { TasksModule } from './modules/tasks/tasks.module';
 import { ShoppingModule } from './modules/shopping/shopping.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { NotificationProducerModule } from './common/notifications/notification-producer.module';
+import { CalendarModule } from './modules/calendar/calendar.module';
+import { FinanceModule } from './modules/finance/finance.module';
 
 @Module({
   imports: [
@@ -64,6 +66,8 @@ import { NotificationProducerModule } from './common/notifications/notification-
     FamiliesModule,
     FamilyEventsModule,
     FirstDateModule,
+    CalendarModule,
+    FinanceModule,
     HealthModule,
   ],
   providers: [

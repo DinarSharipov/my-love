@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { FamilyMembershipService } from '../family-members/family-membership.service';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { paginationMeta } from '../../common/dto/pagination-response.dto';
 @Injectable()
 export class NotificationsService {
   constructor(
@@ -14,6 +16,23 @@ export class NotificationsService {
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
+  }
+  async listPaginated(userId: string, query: PaginationQueryDto) {
+    const { familyId } = await this.membership.requireMembership(userId);
+    const where = { userId, OR: [{ familyId }, { familyId: null }] };
+    const [total, notifications] = await this.prisma.$transaction([
+      this.prisma.notification.count({ where }),
+      this.prisma.notification.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+    ]);
+    return {
+      data: notifications,
+      ...paginationMeta(total, query.page, query.limit),
+    };
   }
   async markRead(userId: string, id: string) {
     const result = await this.prisma.notification.updateMany({

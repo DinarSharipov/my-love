@@ -6,6 +6,7 @@ import request from 'supertest';
 import { OutboxService } from '../src/common/outbox/outbox.service';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/database/prisma.service';
+import { MaintenanceService } from '../src/common/maintenance/maintenance.service';
 
 interface AuthResult {
   accessToken: string;
@@ -681,5 +682,126 @@ describe('API security regression (e2e)', () => {
       .set(auth(account.accessToken))
       .expect(200)
       .expect(({ body }: { body: { status: string } }) => expect(body.status).toBe('REVOKED'));
+  });
+
+  it('protects tasks, shopping, notifications and reminders across families', async () => {
+    const [alice, bob, outsider, outsiderPartner] = await Promise.all([
+      register('HouseholdAlice'),
+      register('HouseholdBob'),
+      register('HouseholdOutsider'),
+      register('HouseholdOutsiderPartner'),
+    ]);
+    await createFamily(alice, bob);
+    await createFamily(outsider, outsiderPartner);
+
+    const taskResponse = await request(httpServer)
+      .post('/api/v1/families/me/tasks')
+      .set(auth(alice.accessToken))
+      .send({
+        title: 'Family-only task',
+        priority: 'NORMAL',
+        assignedToId: bob.user.id,
+        dueAt: '2026-08-16T10:00:00.000Z',
+      })
+      .expect(201);
+    const task = taskResponse.body as { id: string; version: number };
+
+    await request(httpServer)
+      .patch(`/api/v1/families/me/tasks/${task.id}`)
+      .set(auth(alice.accessToken))
+      .set('If-Match', 'invalid')
+      .send({ title: 'Invalid concurrency header' })
+      .expect(400);
+    await request(httpServer)
+      .patch(`/api/v1/families/me/tasks/${task.id}`)
+      .set(auth(outsider.accessToken))
+      .send({ title: 'Cross-family overwrite' })
+      .expect(404);
+
+    const bobInbox = await request(httpServer)
+      .get('/api/v1/notifications')
+      .set(auth(bob.accessToken))
+      .expect(200);
+    const taskNotification = (bobInbox.body as Array<{ id: string; type: string }>).find(
+      (notification) => notification.type === 'TASK_CREATED',
+    );
+    expect(taskNotification).toBeDefined();
+    await request(httpServer)
+      .patch(`/api/v1/notifications/${taskNotification?.id}/read`)
+      .set(auth(alice.accessToken))
+      .expect(404);
+
+    const reminder = await request(httpServer)
+      .post(`/api/v1/families/me/tasks/${task.id}/reminders`)
+      .set(auth(bob.accessToken))
+      .send({ remindAt: '2026-08-16T08:00:00.000Z' })
+      .expect(201);
+    const reminderId = (reminder.body as { id: string }).id;
+    await request(httpServer)
+      .delete(`/api/v1/families/me/tasks/reminders/${reminderId}`)
+      .set(auth(alice.accessToken))
+      .expect(404);
+
+    const calendar = await request(httpServer)
+      .get('/api/v1/families/me/calendar?dateFrom=2026-08-16&dateTo=2026-08-17')
+      .set(auth(bob.accessToken))
+      .expect(200);
+    expect(calendar.body).toMatchObject({
+      timeZone: 'Europe/Moscow',
+      truncated: false,
+    });
+    expect((calendar.body as { data: Array<{ sourceId: string }> }).data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sourceId: task.id, kind: 'TASK' }),
+        expect.objectContaining({ sourceId: reminderId, kind: 'TASK_REMINDER' }),
+      ]),
+    );
+    const outsiderCalendar = await request(httpServer)
+      .get('/api/v1/families/me/calendar?dateFrom=2026-08-16&dateTo=2026-08-17')
+      .set(auth(outsider.accessToken))
+      .expect(200);
+    expect(
+      (outsiderCalendar.body as { data: Array<{ sourceId: string }> }).data.some(
+        (entry) => entry.sourceId === task.id || entry.sourceId === reminderId,
+      ),
+    ).toBe(false);
+
+    const maintenance = app.get(MaintenanceService);
+    await expect(
+      maintenance.deliverDueReminders(new Date('2026-08-16T09:00:00.000Z')),
+    ).resolves.toEqual({ delivered: 1 });
+    await expect(
+      maintenance.deliverDueReminders(new Date('2026-08-16T09:00:00.000Z')),
+    ).resolves.toEqual({ delivered: 0 });
+
+    const firstList = await request(httpServer)
+      .post('/api/v1/families/me/shopping-lists')
+      .set(auth(alice.accessToken))
+      .send({ name: 'Groceries' })
+      .expect(201);
+    const secondList = await request(httpServer)
+      .post('/api/v1/families/me/shopping-lists')
+      .set(auth(alice.accessToken))
+      .send({ name: 'Hardware' })
+      .expect(201);
+    const firstListId = (firstList.body as { id: string }).id;
+    const secondListId = (secondList.body as { id: string }).id;
+    const itemResponse = await request(httpServer)
+      .post(`/api/v1/families/me/shopping-lists/${firstListId}/items`)
+      .set(auth(alice.accessToken))
+      .send({ name: 'Milk' })
+      .expect(201);
+    const item = itemResponse.body as { id: string; version: number };
+
+    await request(httpServer)
+      .post(`/api/v1/families/me/shopping-lists/${secondListId}/items/${item.id}/check`)
+      .set(auth(alice.accessToken))
+      .set('If-Match', String(item.version))
+      .expect(404);
+    await request(httpServer)
+      .post(`/api/v1/families/me/shopping-lists/${firstListId}/items/${item.id}/check`)
+      .set(auth(alice.accessToken))
+      .set('If-Match', String(item.version))
+      .expect(201);
   });
 });

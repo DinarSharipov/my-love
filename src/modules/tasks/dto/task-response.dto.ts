@@ -8,13 +8,14 @@ export class TaskResponseDto {
   @ApiPropertyOptional({ format: 'uuid', nullable: true }) completedById: string | null;
   @ApiProperty() title: string;
   @ApiPropertyOptional({ nullable: true }) description: string | null;
-  @ApiPropertyOptional({ nullable: true }) dueAt: Date | null;
+  @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true }) dueAt: Date | null;
   @ApiProperty({ enum: TaskPriority }) priority: TaskPriority;
   @ApiProperty({ enum: TaskStatus }) status: TaskStatus;
   @ApiProperty() version: number;
-  @ApiPropertyOptional({ nullable: true }) completedAt: Date | null;
-  @ApiProperty() createdAt: Date;
-  @ApiProperty() updatedAt: Date;
+  @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true })
+  completedAt: Date | null;
+  @ApiProperty({ type: String, format: 'date-time' }) createdAt: Date;
+  @ApiProperty({ type: String, format: 'date-time' }) updatedAt: Date;
   static fromEntity(task: Task): TaskResponseDto {
     return task;
   }

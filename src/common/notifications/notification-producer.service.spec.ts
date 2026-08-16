@@ -1,5 +1,6 @@
 import { OutboxService } from '../outbox/outbox.service';
 import { NotificationProducerService } from './notification-producer.service';
+import { QuietHoursService } from './quiet-hours.service';
 
 describe('NotificationProducerService', () => {
   it('creates inbox and Telegram outbox messages for an active linked recipient', async () => {
@@ -16,7 +17,11 @@ describe('NotificationProducerService', () => {
       $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
     };
     const outbox = { enqueueTelegram: jest.fn().mockResolvedValue({}) };
-    const service = new NotificationProducerService(prisma as never, outbox as never);
+    const service = new NotificationProducerService(
+      prisma as never,
+      outbox as never,
+      new QuietHoursService(),
+    );
 
     await service.notifyUser({
       userId: 'user-id',
@@ -59,7 +64,11 @@ describe('NotificationProducerService', () => {
     };
     const enqueueTelegram = jest.fn();
     const outbox = { enqueueTelegram } as unknown as OutboxService;
-    const service = new NotificationProducerService(prisma as never, outbox);
+    const service = new NotificationProducerService(
+      prisma as never,
+      outbox,
+      new QuietHoursService(),
+    );
 
     await service.notifyUser({
       userId: 'user-id',

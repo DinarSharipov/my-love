@@ -3,7 +3,6 @@ import {
   Controller,
   Delete,
   Get,
-  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -14,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ConcurrencyVersion } from '../../common/decorators/concurrency-version.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { CreateTaskDto } from './dto/create-task.dto';
@@ -40,28 +40,23 @@ export class TasksController {
     @Param('id') id: string,
     @CurrentUser() u: AuthenticatedUser,
     @Body() dto: UpdateTaskDto,
-    @Headers('if-match') ifMatch?: string,
+    @ConcurrencyVersion() expectedVersion?: number,
   ) {
-    return this.tasks.update(
-      id,
-      u.id,
-      dto,
-      ifMatch ? Number(ifMatch.replace(/"/g, '')) : undefined,
-    );
+    return this.tasks.update(id, u.id, dto, expectedVersion);
   }
   @Post(':id/complete') @ApiOkResponse({ type: TaskResponseDto }) complete(
     @Param('id') id: string,
     @CurrentUser() u: AuthenticatedUser,
-    @Headers('if-match') h?: string,
+    @ConcurrencyVersion() expectedVersion?: number,
   ) {
-    return this.tasks.setCompleted(id, u.id, true, h ? Number(h.replace(/"/g, '')) : undefined);
+    return this.tasks.setCompleted(id, u.id, true, expectedVersion);
   }
   @Post(':id/reopen') @ApiOkResponse({ type: TaskResponseDto }) reopen(
     @Param('id') id: string,
     @CurrentUser() u: AuthenticatedUser,
-    @Headers('if-match') h?: string,
+    @ConcurrencyVersion() expectedVersion?: number,
   ) {
-    return this.tasks.setCompleted(id, u.id, false, h ? Number(h.replace(/"/g, '')) : undefined);
+    return this.tasks.setCompleted(id, u.id, false, expectedVersion);
   }
   @Delete(':id') @HttpCode(HttpStatus.NO_CONTENT) @ApiNoContentResponse() archive(
     @Param('id') id: string,

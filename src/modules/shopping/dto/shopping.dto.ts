@@ -15,11 +15,11 @@ export class ShoppingItemResponseDto {
   @ApiProperty() id: string;
   @ApiProperty() listId: string;
   @ApiProperty() name: string;
-  @ApiPropertyOptional() quantity: string | null;
+  @ApiPropertyOptional({ nullable: true }) quantity: string | null;
   @ApiProperty() checked: boolean;
   @ApiProperty() version: number;
-  @ApiProperty() createdAt: Date;
-  @ApiProperty() updatedAt: Date;
+  @ApiProperty({ type: String, format: 'date-time' }) createdAt: Date;
+  @ApiProperty({ type: String, format: 'date-time' }) updatedAt: Date;
 }
 export class ShoppingListResponseDto {
   @ApiProperty() id: string;
@@ -28,6 +28,6 @@ export class ShoppingListResponseDto {
   @ApiProperty() archived: boolean;
   @ApiProperty() version: number;
   @ApiProperty({ type: [ShoppingItemResponseDto] }) items: ShoppingItemResponseDto[];
-  @ApiProperty() createdAt: Date;
-  @ApiProperty() updatedAt: Date;
+  @ApiProperty({ type: String, format: 'date-time' }) createdAt: Date;
+  @ApiProperty({ type: String, format: 'date-time' }) updatedAt: Date;
 }

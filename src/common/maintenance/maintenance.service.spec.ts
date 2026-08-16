@@ -1,4 +1,5 @@
 import { MaintenanceService } from './maintenance.service';
+import { QuietHoursService } from '../notifications/quiet-hours.service';
 
 describe('MaintenanceService', () => {
   it('removes expired security artifacts and expires invitations', async () => {
@@ -22,7 +23,12 @@ describe('MaintenanceService', () => {
           { count: 6 },
         ]),
     };
-    const service = new MaintenanceService(prisma as never, {} as never);
+    const service = new MaintenanceService(
+      prisma as never,
+      {} as never,
+      new QuietHoursService(),
+      {} as never,
+    );
 
     await expect(
       service.cleanupExpiredSecurityArtifacts(new Date('2026-08-15T00:00:00Z')),

@@ -10,6 +10,7 @@ import { SmtpEmailProvider } from './smtp-email.provider';
 import { HttpTelegramProvider } from './http-telegram.provider';
 import { LoggingTelegramProvider } from './logging-telegram.provider';
 import { TELEGRAM_PROVIDER } from './telegram.provider';
+import { QuietHoursService } from '../notifications/quiet-hours.service';
 
 @Module({
   imports: [DatabaseModule],
@@ -41,7 +42,8 @@ import { TELEGRAM_PROVIDER } from './telegram.provider';
     OutboxService,
     OutboxWorker,
     PayloadEncryptionService,
+    QuietHoursService,
   ],
-  exports: [OutboxService],
+  exports: [OutboxService, QuietHoursService],
 })
 export class OutboxModule {}

@@ -9,5 +9,6 @@ import { NotificationProducerModule } from '../../common/notifications/notificat
   imports: [FamilyMembersModule, NotificationProducerModule],
   controllers: [TasksController, TaskRoutinesController],
   providers: [TasksService, TaskRoutinesService],
+  exports: [TaskRoutinesService],
 })
 export class TasksModule {}

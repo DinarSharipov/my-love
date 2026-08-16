@@ -72,14 +72,25 @@ export class ShoppingService {
     });
     return item;
   }
-  async checkItem(userId: string, itemId: string, checked: boolean, expectedVersion?: number) {
+  async checkItem(
+    userId: string,
+    listId: string,
+    itemId: string,
+    checked: boolean,
+    expectedVersion?: number,
+  ) {
     const { familyId } = await this.membership.requireMembership(userId);
     const item = await this.prisma.shoppingItem.findFirst({
-      where: { id: itemId, list: { familyId, archived: false } },
+      where: { id: itemId, listId, list: { familyId, archived: false } },
     });
     if (!item) throw new NotFoundException('Shopping item not found');
     const result = await this.prisma.shoppingItem.updateMany({
-      where: { id: itemId, version: expectedVersion ?? item.version, checked: { not: checked } },
+      where: {
+        id: itemId,
+        listId,
+        version: expectedVersion ?? item.version,
+        checked: { not: checked },
+      },
       data: {
         checked,
         checkedById: checked ? userId : null,

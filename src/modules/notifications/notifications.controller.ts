@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   Patch,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
@@ -18,6 +19,9 @@ import {
   NotificationPreferencesResponseDto,
   UpdateNotificationPreferencesDto,
 } from './dto/notification-preferences.dto';
+import { NotificationResponseDto } from './dto/notification-response.dto';
+import { PaginatedNotificationsResponseDto } from './dto/notification-response.dto';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 @ApiTags('notifications')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
@@ -40,7 +44,14 @@ export class NotificationsController {
   ) {
     return this.preferences.update(u.id, dto);
   }
-  @Get() @ApiOkResponse() list(@CurrentUser() u: AuthenticatedUser) {
+  @Get('page')
+  @ApiOkResponse({ type: PaginatedNotificationsResponseDto })
+  listPaginated(@CurrentUser() u: AuthenticatedUser, @Query() query: PaginationQueryDto) {
+    return this.notifications.listPaginated(u.id, query);
+  }
+  @Get() @ApiOkResponse({ type: [NotificationResponseDto] }) list(
+    @CurrentUser() u: AuthenticatedUser,
+  ) {
     return this.notifications.list(u.id);
   }
   @Patch(':id/read') @HttpCode(HttpStatus.NO_CONTENT) @ApiNoContentResponse() read(

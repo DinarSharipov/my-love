@@ -1,6 +1,6 @@
 # My Love — план развития backend
 
-Актуально на 15 августа 2026 года. План составлен по `PRODUCT_ROADMAP.md`,
+Актуально на 16 августа 2026 года. План составлен по `PRODUCT_ROADMAP.md`,
 `IMPLEMENTATION_STATUS.md` frontend-проекта и текущему состоянию backend.
 
 ## Статус реализации
@@ -27,6 +27,19 @@
       партнёром с сохранением shared data.
 - [ ] Cursor pagination; финансовые команды должны связывать domain write и idempotency result одной транзакцией.
 - [x] Audit log и transactional outbox.
+- [x] Tasks, task routines, shopping lists, notification inbox/preferences/reminders
+      и базовый family dashboard.
+- [x] Telegram linking, outbox delivery transport и отдельный bot/gateway.
+- [x] Quiet-hours scheduling для Telegram при enqueue и повторной проверке перед delivery.
+- [x] Политика каналов: product/domain notifications доставляются только в in-app inbox
+      и связанный Telegram; email зарезервирован для security/account recovery flows.
+- [x] ADR и общая visibility/consent policy перед finance и wellbeing; FK-backed grants
+      добавляются внутри первого sensitive domain consumer.
+- [x] Additive calendar projection для events, tasks и private reminders.
+- [x] Financial schema foundation: wallet, immutable balanced ledger, reversal и
+      transactional command result.
+- [x] Wallet API с server-owned scope, visibility, concurrency и audit; следующий
+      финансовый срез — idempotent ledger commands.
 
 ## 1. Целевая модель и границы
 
@@ -167,8 +180,9 @@ Backend обслуживает приватное пространство уж�
   идемпотентных consumers;
 - перенести expiration приглашений в scheduled job, оставив проверку срока в
   командах как защиту;
-- определить каналы `IN_APP`, `EMAIL`, позднее `WEB_PUSH`, шаблоны, deduplication,
-  digest и quiet hours;
+- каналы product notifications — `IN_APP` и `TELEGRAM`; email использовать только для
+  reset/change password, подтверждения смены email и recovery аккаунта. Security email
+  не зависит от пользовательского toggle и quiet hours;
 - добавить operational endpoints/metrics для backlog, ошибок и повторного запуска.
 
 ### 0.5. Тестовая и эксплуатационная база
@@ -418,12 +432,25 @@ wellbeing и children следует начинать только после г
        пока ограничены существующими family events; расширение переносится в этап 2.
 10. [x] Завершить общие visibility/audit/jobs задачи этапа 0 до финансов и wellbeing.
 
-### Следующий вертикальный срез
+### Следующие вертикальные срезы
 
-Этап 2 начинается с `tasks` и `task-routines`: разовые и повторяющиеся задачи,
-назначение партнёру/семье, completion/reopen, optimistic concurrency, audit и
-идемпотентная генерация повторений. Shopping и notifications идут после базового
-task-сценария, чтобы не смешивать несколько доменов в одной миграции.
+Минимальный этап 2 уже включает `tasks`, `task-routines`, shopping, notification
+inbox/preferences/reminders и dashboard. Дальнейший порядок:
+
+1. Quiet-hours scheduling для Telegram/email через `OutboxEvent.availableAt`.
+2. Authorization/unit/E2E hardening бытовых доменов, пагинация inbox и полные
+   Swagger response DTO.
+3. [x] Scheduled idempotent generation task routines.
+4. Ограниченная calendar/dashboard projection для events, tasks и reminders.
+5. ADR и минимальная visibility/consent policy.
+6. [x] Financial schema foundation: wallet visibility и immutable ledger.
+7. [x] Wallet API: server-owned family/owner scope, visibility, optimistic concurrency
+   и audit.
+8. Idempotent income/expense/transfer ledger commands, затем ledger query.
+9. Production Telegram gateway: отдельный HTTPS hostname/route, secrets, BotFather
+   token, webhook registration и delivery/linking smoke tests.
+
+Wellbeing и child profiles не начинать до visibility/consent/retention foundation.
 
 После каждой задачи обновлять `IMPLEMENTATION_STATUS.md`, OpenAPI и generated
 frontend client. Не объединять весь этап в одну миграцию или один pull request.

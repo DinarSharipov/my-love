@@ -1,6 +1,6 @@
 # My Love backend — статус реализации
 
-Последняя сверка с кодом: 15 августа 2026 года.
+Последняя сверка с кодом: 16 августа 2026 года.
 
 Этот файл — обязательная точка входа для новых backend-агентов. Перед substantial
 work сверять записи ниже с фактическими schema/controllers/tests. Frontend находится
@@ -8,18 +8,23 @@ work сверять записи ниже с фактическими schema/con
 
 ## Текущий фокус
 
-- Roadmap: этап 1 — закрыть начатые сценарии.
-- Последний завершённый срез: scheduled cleanup истёкших security-артефактов.
-- Последний завершённый срез: retention policy для завершивших grace period аккаунтов.
-- Последний завершённый срез: базовый family lifecycle API.
-- Последний завершённый срез: двустороннее подтверждение расформирования семьи.
-- Последний завершённый срез: backend Telegram account linking contract.
-- Этап 0 и этап 1 backend закрыты по текущему объёму roadmap.
-- Последний завершённый срез: hardened Telegram linking contract и outbox delivery transport.
-- Последний завершённый срез: отдельный Telegram bot/gateway для webhook-команд и delivery.
+- Roadmap: этап 2 — hardening бытового MVP перед финансовым доменом.
+- Последний завершённый продуктовый срез: Telegram auth и domain notifications.
 - Последний завершённый инфраструктурный срез: production CI/CD через GitHub Actions,
   GHCR и Docker Compose на отдельном сервере.
-- Следующий срез: quiet-hours scheduling для Telegram/email outbox delivery.
+- Этапы 0 и 1 закрыты в части auth, family foundation, invitations и базового
+  календаря. Общая visibility/consent policy остаётся блокером перед finance и wellbeing.
+- Этап 2 реализован минимально: tasks, routines, shopping, inbox, reminders и dashboard
+  доступны, но требуют расширенного authorization/E2E покрытия, автоматической генерации
+  routines, пагинации inbox и полных Swagger response contracts.
+- Последний завершённый срез: timezone-aware quiet-hours scheduling для Telegram outbox
+  при постановке и непосредственно перед delivery.
+- Последний завершённый продуктовый срез: financial schema foundation — wallet и
+  immutable balanced ledger по ADR 0006.
+- Household hardening, scheduled routines, calendar projection и ADR visibility/consent
+  завершены в текущем объёме.
+- Последний завершённый продуктовый срез: financial wallet API.
+- Текущий срез: транзакционные idempotent income/expense/transfer ledger-команды.
 
 ## Реализовано
 
@@ -89,6 +94,8 @@ work сверять записи ниже с фактическими schema/con
 - Task routines: модель `TaskRoutine` и API `POST/GET /families/me/task-routines`,
   `POST /:id/generate`, `DELETE /:id`; DAILY/WEEKLY frequency, interval, nextRunAt,
   family-scoped assignment и атомарное продвижение расписания с concurrency check.
+  Maintenance worker автоматически генерирует одну задачу на due routine за проход;
+  compare-and-swap по `version` предотвращает дубли конкурентных worker-ов.
 - Shopping lists: модели `ShoppingList`/`ShoppingItem` и API для создания/просмотра/
   архивации списков, добавления позиций и check/uncheck; все операции ограничены
   текущей семьёй и пишутся в audit.
@@ -101,11 +108,22 @@ work сверять записи ниже с фактическими schema/con
 - Dashboard: `GET /api/v1/families/me/dashboard` возвращает read-only агрегаты
   открытых/просроченных задач, unchecked shopping items, unread notifications и
   ближайшие пять family events; доступ ограничен active membership.
+- Calendar projection: `GET /api/v1/families/me/calendar?dateFrom&dateTo` объединяет
+  family events, незархивированные задачи и только reminders текущего пользователя.
+  Диапазон ограничен 93 днями, результат — 500 entries с явным `truncated`; timezone семьи
+  определяет UTC-границы local dates. Исходные persistence-модели не объединяются.
+- Financial wallets: `POST/GET/PATCH/DELETE /api/v1/families/me/wallets`; family и owner
+  назначаются сервером, family wallet создаёт/изменяет только partner, personal wallet
+  виден owner и партнёру только при `PARTNER`, но не child. Поддерживаются `If-Match`,
+  soft archive и атомарный audit без сумм.
 - Notification preferences: отдельная модель и `GET/PATCH /api/v1/notifications/preferences`
   с in-app/email toggles и quiet hours `HH:mm`; настройки создаются при первом чтении.
 - Notification producers: после создания/завершения задачи и изменения позиции shopping
   другим участникам семьи создаются in-app уведомления; автор действия не уведомляется,
   а `inAppEnabled=false` учитывается.
+- Quiet hours: Telegram outbox получает отложенный `availableAt` по timezone пользователя;
+  outbox повторно проверяет актуальные preferences перед delivery. Поддерживаются дневные
+  и переходящие через полночь интервалы и смена UTC offset при DST. In-app остаётся мгновенным.
 - Telegram linking: authenticated пользователь создаёт одноразовый 10-minute link token,
   внешний bot обменивает его на connection, пользователь читает статус и отзывает связь.
   Exchange атомарно claim-ит token, connection и `telegramEnabled`; повторное и конкурентное
@@ -120,6 +138,10 @@ work сверять записи ниже с фактическими schema/con
 - Telegram domain coverage: адресный и family-wide producer отправляет in-app/Telegram
   сообщения для приглашений и ответов на них, family events, first date, family lifecycle,
   task routines, задач и shopping. Due task reminders также создают Telegram outbox event.
+- Channel policy: product/domain notifications используют только in-app inbox и Telegram.
+  Email зарезервирован для password reset, подтверждения смены email и account recovery;
+  security email не отключается preferences и не задерживается quiet hours. Поле
+  `emailEnabled` временно сохранено в API ради совместимости, но не управляет security email.
 - Telegram bot/gateway: отдельный Nest entrypoint без доступа к БД принимает защищённый
   Telegram webhook, поддерживает `/start`/`/link`, `/status`, `/notifications`, `/unlink`,
   вызывает backend integration API и отправляет outbox delivery через Telegram Bot API.
@@ -151,14 +173,18 @@ work сверять записи ниже с фактическими schema/con
 ## Миграции
 
 Применяются только новыми файлами; текущая последняя миграция:
-`20260815190000_add_telegram_linking`. Всего 25 миграций.
+`20260816000000_add_financial_foundation`. Всего 26 миграций.
+
+Financial foundation добавляет personal/family wallets, append-only ledger transactions/
+entries, reversal link и `FinancialCommandResult`. Deferred PostgreSQL triggers требуют
+минимум две balanced entries, совпадение family/currency и запрещают update/delete ledger.
 
 ## Проверки на момент сверки
 
 - `npm run lint` — passed.
-- `npm test -- --runInBand` — 11 suites / 37 tests passed.
+- `npm test -- --runInBand` — 22 suites / 64 tests passed.
 - `npm run build` — passed.
-- `npm run test:e2e:verify` — 9 scenarios passed на чистой БД; все 25 миграций
+- `npm run test:e2e:verify` — 10 scenarios passed на чистой БД; все 26 миграций
   последовательно применились.
 - Production Docker image собран; оба entrypoint (`dist/main.js` и
   `dist/telegram-gateway/main.js`) присутствуют.
@@ -171,23 +197,37 @@ work сверять записи ниже с фактическими schema/con
 - Для password reset нельзя хранить raw token/link в outbox payload; перед реализацией
   добавлен AES-256-GCM encryption boundary; production должен задавать отдельный
   `OUTBOX_ENCRYPTION_KEY` (не использовать fallback от JWT secret).
-- Expiration приглашений пока lazy, с defensive check в командах.
+- Expiration приглашений выполняется maintenance worker-ом; defensive expiry checks в
+  командах сохранены как защита от задержки worker-а.
 - Нет refresh rotation; hard delete shared data намеренно не выполняется.
-- Архивация пока односторонняя команда партнёра; восстановление и публичное чтение
-  audit history требуют отдельного согласования контракта.
-- Запланированная деактивация безопасно блокирует доступ, но не удаляет данные до
-  отдельного cleanup job с утверждённой policy.
-- Нет cursor pagination и calendar projection для будущих доменов.
+- Архивация остаётся односторонней командой партнёра; расформирование требует подтверждения
+  второго партнёра. Restore и family-scoped audit history уже реализованы.
+- Retention worker анонимизирует завершившие grace period аккаунты, сохраняя membership
+  и shared family data; полного hard-delete shared data намеренно нет.
+- Базовая visibility/consent policy и calendar projection готовы; cursor pagination
+  остаётся для больших ledger/timeline выборок. Notification inbox получил additive
+  paginated endpoint, legacy array сохранён для frontend compatibility.
 - Telegram bot/gateway реализован, но production deployment должен предоставить публичный
   HTTPS endpoint, создать bot через BotFather, зарегистрировать webhook и задать secrets;
   эти внешние операции намеренно не выполняются из repository.
-- Quiet hours пока хранятся как preferences, но отложенная Telegram/email доставка по ним
-  ещё не рассчитывается; до подключения production transport это нужно завершить.
+- Quiet hours применяются к Telegram. Общий domain email notification producer не нужен
+  по принятой channel policy; security email доставляется немедленно.
+- Household ownership покрыт unit и общим cross-family E2E critical path; CI пока не
+  запускает PostgreSQL E2E suite.
+- Shopping check/uncheck принимает optional `If-Match` и проверяет соответствие item сегменту
+  `listId`; tasks используют общий строгий parser concurrency header.
 - Для запуска Telegram gateway на production всё ещё нужен bot token от BotFather; без него
   нельзя зарегистрировать webhook или выполнять реальные отправки через Telegram Bot API.
+- Production Compose пока не запускает gateway и не публикует webhook route. Нужны BotFather
+  token, два независимых secrets, публичный HTTPS hostname/path и DNS; полный checklist —
+  `docs/TELEGRAM_GATEWAY.md`.
 - Public user registry оставлен ради обратной совместимости и требует privacy-решения.
 - Старые endpoint/DTO нельзя молча ломать: frontend сильно зависит от generated contract.
 - Frontend не изменять; необходимые frontend-действия фиксировать только здесь.
+- Frontend follow-up: после публикации актуального Swagger перейти с legacy
+  `GET /notifications` на `GET /notifications/page` и при необходимости заменить
+  client-side объединение календаря на `GET /families/me/calendar`; старые endpoints
+  сохранены и продолжают работать.
 - Frontend follow-up (выполняет отдельный frontend-агент): production frontend
   `https://my-love-frontend.vercel.app` должен направлять `/api/:path*` на
   `https://api.147.45.124.221.sslip.io/api/:path*` через Vercel rewrite. Текущий
@@ -242,3 +282,13 @@ work сверять записи ниже с фактическими schema/con
 | 2026-08-15 | Production CI/CD | GitHub Actions test/build/GHCR/deploy pipeline, production Compose, отдельный deploy user/key, migration и health gates | lint, 32 unit, build, Compose config, server SSH/Docker smoke-check | merge PR и проверить первый production workflow |
 | 2026-08-15 | Permanent Telegram authorization | бессрочная `TelegramConnection` после одноразовой привязки; `/start` повторно использует активную связь без нового кода | targeted unit, lint, build | quiet-hours scheduling для Telegram/email |
 | 2026-08-15 | Telegram auth and domain notifications | `/auth`/`/link`/`/start` linking, persistent bot identity, direct/family notification producer; invitations, events, first date, lifecycle, tasks/routines, shopping и reminders создают Telegram outbox | lint, 37 unit, 9 e2e, build, diff-check | добавить BotFather token и включить gateway/webhook на production |
+| 2026-08-16 | Documentation sync | статус и backend backlog сверены с 25 миграциями, controllers, tests и read-only frontend status; устранены устаревшие next-slice/gap записи | diff-check | quiet-hours scheduling |
+| 2026-08-16 | Quiet-hours scheduling | timezone-aware расчёт `availableAt` для Telegram producers/reminders и повторная проверка preferences перед delivery; in-app остаётся мгновенным | format, lint, 12 suites / 42 unit, build, diff-check | hardening tasks/shopping/notifications/reminders |
+| 2026-08-16 | Household hardening I | общий строгий `If-Match` для tasks, list/item scope и concurrency для shopping, валидные quiet-hours preferences, точные shopping Swagger DTO | lint, 15 suites / 46 unit, build, diff-check | scheduled task routines |
+| 2026-08-16 | Scheduled task routines | maintenance generation due DAILY/WEEKLY routines; атомарный CAS claim, task и audit, ограничение одного catch-up occurrence на routine за проход | lint, 16 suites / 48 unit, 9 e2e на чистой БД, 25 migrations, build, diff-check | продолжить household hardening |
+| 2026-08-16 | Household hardening II | ownership tests/E2E для tasks, shopping, notifications/reminders; additive `GET /notifications/page`; точные notification/reminder/dashboard DTO | lint, 19 suites / 54 unit, 10 e2e, build, diff-check | calendar projection |
+| 2026-08-16 | Calendar projection | additive `GET /families/me/calendar`, family events + tasks + private reminders, local-date range до 93 дней, 500 entries + `truncated` | lint, 20 suites / 56 unit, 10 e2e, build, diff-check | visibility/consent ADR |
+| 2026-08-16 | Visibility/consent foundation | ADR 0005 и общая pure policy owner/same-family/scoped consent без premature polymorphic persistence | lint, 21 suites / 59 unit, build, diff-check | financial foundation |
+| 2026-08-16 | Financial schema foundation | ADR 0006, migration `20260816000000_add_financial_foundation`: wallet, immutable balanced ledger, reversal и transactional command result | generate, validate, lint, 21 suites / 59 unit, 10 e2e, 26 migrations, build, diff-check | wallet API и idempotent ledger commands |
+| 2026-08-16 | Financial wallet API | `POST/GET/PATCH/DELETE /families/me/wallets`; server-owned family/owner, PRIVATE/PARTNER/FAMILY reads, partner-only family wallet management, concurrency и audit | lint, 22 suites / 64 unit, build, diff-check | idempotent ledger commands |
+| 2026-08-16 | Notification channel policy | domain notifications только in-app/Telegram; email только security/account recovery; production bot readiness checklist | code/config audit | production gateway wiring после получения hostname/token/secrets |

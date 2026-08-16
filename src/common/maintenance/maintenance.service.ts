@@ -3,6 +3,8 @@ import { FamilyInvitationStatus } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { OutboxService } from '../outbox/outbox.service';
 import { randomUUID } from 'node:crypto';
+import { QuietHoursService } from '../notifications/quiet-hours.service';
+import { TaskRoutinesService } from '../../modules/tasks/task-routines.service';
 
 export interface CleanupResult {
   sessions: number;
@@ -28,6 +30,8 @@ export class MaintenanceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly outbox: OutboxService,
+    private readonly quietHours: QuietHoursService,
+    private readonly taskRoutines: TaskRoutinesService,
   ) {}
 
   async cleanupExpiredSecurityArtifacts(now = new Date()): Promise<CleanupResult> {
@@ -105,7 +109,14 @@ export class MaintenanceService {
           select: {
             locale: true,
             timeZone: true,
-            notificationPreference: { select: { telegramEnabled: true } },
+            notificationPreference: {
+              select: {
+                telegramEnabled: true,
+                quietHoursEnabled: true,
+                quietHoursStart: true,
+                quietHoursEnd: true,
+              },
+            },
             telegramConnection: { select: { status: true } },
           },
         },
@@ -133,6 +144,11 @@ export class MaintenanceService {
           reminder.user.notificationPreference?.telegramEnabled &&
           reminder.user.telegramConnection?.status === 'ACTIVE'
         ) {
+          const availableAt = this.quietHours.nextAllowedAt(
+            now,
+            reminder.user.timeZone,
+            reminder.user.notificationPreference,
+          );
           await this.outbox.enqueueTelegram(tx, {
             eventId: randomUUID(),
             schemaVersion: 1,
@@ -145,7 +161,7 @@ export class MaintenanceService {
             locale: reminder.user.locale,
             timeZone: reminder.user.timeZone,
             occurredAt: now.toISOString(),
-            availableAt: now.toISOString(),
+            availableAt: availableAt.toISOString(),
           });
         }
         return true;
@@ -153,5 +169,9 @@ export class MaintenanceService {
       if (result) delivered += 1;
     }
     return { delivered };
+  }
+
+  generateDueTaskRoutines(now = new Date()): Promise<{ generated: number }> {
+    return this.taskRoutines.generateDue(now);
   }
 }

@@ -11,6 +11,7 @@ import {
 } from './outbox.types';
 import { PayloadEncryptionService } from './payload-encryption.service';
 import { TELEGRAM_PROVIDER, type TelegramProvider } from './telegram.provider';
+import { QuietHoursService } from '../notifications/quiet-hours.service';
 
 @Injectable()
 export class OutboxService {
@@ -23,6 +24,7 @@ export class OutboxService {
     @Inject(EMAIL_PROVIDER) private readonly emailProvider: EmailProvider,
     @Inject(TELEGRAM_PROVIDER) private readonly telegramProvider: TelegramProvider,
     private readonly encryption: PayloadEncryptionService,
+    private readonly quietHours: QuietHoursService,
   ) {
     this.maxAttempts = config.get<number>('OUTBOX_MAX_ATTEMPTS', 5);
   }
@@ -113,9 +115,33 @@ export class OutboxService {
             status: 'ACTIVE',
             user: { notificationPreference: { telegramEnabled: true } },
           },
-          select: { chatId: true },
+          select: {
+            chatId: true,
+            user: {
+              select: {
+                timeZone: true,
+                notificationPreference: {
+                  select: {
+                    quietHoursEnabled: true,
+                    quietHoursStart: true,
+                    quietHoursEnd: true,
+                  },
+                },
+              },
+            },
+          },
         });
         if (recipient) {
+          const now = new Date();
+          const availableAt = this.quietHours.nextAllowedAt(
+            now,
+            recipient.user.timeZone,
+            recipient.user.notificationPreference,
+          );
+          if (availableAt.getTime() > now.getTime()) {
+            await this.deferTelegram(id, message, availableAt);
+            return;
+          }
           await this.telegramProvider.send({ ...message, recipientChatId: recipient.chatId });
         }
       } else {
@@ -129,6 +155,25 @@ export class OutboxService {
     } catch (error) {
       await this.fail(id, error);
     }
+  }
+
+  private async deferTelegram(
+    id: string,
+    message: TelegramNotificationEnvelope,
+    availableAt: Date,
+  ): Promise<void> {
+    await this.prisma.outboxEvent.updateMany({
+      where: { id, status: OutboxEventStatus.PROCESSING },
+      data: {
+        status: OutboxEventStatus.PENDING,
+        availableAt,
+        lockedAt: null,
+        payload: {
+          ...message,
+          availableAt: availableAt.toISOString(),
+        },
+      },
+    });
   }
 
   private async fail(id: string, error: unknown): Promise<void> {
