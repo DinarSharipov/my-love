@@ -25,6 +25,8 @@ work сверять записи ниже с фактическими schema/con
   завершены в текущем объёме.
 - Последний завершённый продуктовый срез: financial wallet API.
 - Текущий срез: транзакционные idempotent income/expense/transfer ledger-команды.
+- Последний инфраструктурный hardening-срез: единый transactional notification producer
+  для всех текущих domain events и due reminders.
 
 ## Реализовано
 
@@ -138,6 +140,13 @@ work сверять записи ниже с фактическими schema/con
 - Telegram domain coverage: адресный и family-wide producer отправляет in-app/Telegram
   сообщения для приглашений и ответов на них, family events, first date, family lifecycle,
   task routines, задач и shopping. Due task reminders также создают Telegram outbox event.
+- Единая архитектура domain notifications: каждый доменный сервис вызывает только
+  `NotificationProducerService` (`notifyUser` или `notifyFamilyMembers`). Для scheduled
+  источников worker claim-ит запись и в той же Prisma-транзакции вызывает
+  `notifyUserInTransaction`; producer — единственное место, где создаются inbox-запись,
+  применяется preference/quiet-hours и ставится Telegram outbox event. Новый тип события
+  или напоминания добавляется без интеграции с ботом: достаточно выбрать получателя и
+  передать `type/title/body` в producer. Внешняя доставка остаётся ответственностью outbox.
 - Channel policy: product/domain notifications используют только in-app inbox и Telegram.
   Email зарезервирован для password reset, подтверждения смены email и account recovery;
   security email не отключается preferences и не задерживается quiet hours. Поле
@@ -258,6 +267,7 @@ entries, reversal link и `FinancialCommandResult`. Deferred PostgreSQL triggers
 | 2026-08-15 | Outbox/email foundation | durable outbox, worker/retry/stale-lock recovery, безопасный logging email adapter                                                                       | migration, 24 unit, 5 e2e, build               | protected forgot/reset password                  |
 | 2026-08-15 | Password reset          | request/confirm, hash token, encrypted email outbox payload, session revocation                                                                          | migration, 24 unit, 6 e2e, build               | email confirmation/account lifecycle             |
 | 2026-08-15 | Local SMTP              | Mailpit service, Nodemailer SMTP adapter, Compose SMTP wiring и inbox verification                                                                       | lint, unit, e2e, Docker build, SMTP smoke test | production SMTP credentials / email confirmation |
+| 2026-08-16 | Unified notifications   | due task reminders переведены на `NotificationProducerService`; inbox и Telegram outbox создаются единообразно и атомарно с claim reminder              | lint, 22 unit suites / 64 tests, build         | financial ledger commands                         |
 | 2026-08-15 | Email change            | re-auth request, one-time hash token, encrypted confirmation email, email update и revocation всех sessions                                              | generate, lint, 24 unit, 7 e2e, build          | account lifecycle / cleanup jobs                 |
 | 2026-08-15 | Account deactivation    | re-auth request, configurable grace period, encrypted recovery link, session revocation, cancellation исходящих invitations и одноразовое восстановление | generate, lint, 24 unit, 8 e2e, build          | cleanup jobs / retention policy / account export |
 | 2026-08-15 | Cleanup worker          | периодическая очистка истёкших sessions/tokens и перевод просроченных invitations в `EXPIRED` | lint, 25 unit, 8 e2e, build | retention policy / account export |

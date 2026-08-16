@@ -3,6 +3,15 @@ import { PrismaService } from '../../database/prisma.service';
 import { randomUUID } from 'node:crypto';
 import { OutboxService } from '../outbox/outbox.service';
 import { QuietHoursService } from './quiet-hours.service';
+import type { OutboxTransaction } from '../outbox/outbox.types';
+
+export interface DomainNotification {
+  userId: string;
+  familyId?: string;
+  type: string;
+  title: string;
+  body?: string;
+}
 
 @Injectable()
 export class NotificationProducerService {
@@ -12,14 +21,21 @@ export class NotificationProducerService {
     private readonly quietHours: QuietHoursService,
   ) {}
 
-  async notifyUser(input: {
-    userId: string;
-    familyId?: string;
-    type: string;
-    title: string;
-    body?: string;
-  }): Promise<void> {
-    const user = await this.prisma.user.findFirst({
+  async notifyUser(input: DomainNotification): Promise<void> {
+    await this.prisma.$transaction((tx) => this.notifyUserInTransaction(tx, input));
+  }
+
+  /**
+   * Use from a domain transaction that changes the source entity (for example,
+   * claiming a due reminder). This keeps the inbox item and Telegram outbox
+   * record atomic with that source-state change.
+   */
+  async notifyUserInTransaction(
+    tx: OutboxTransaction,
+    input: DomainNotification,
+    now = new Date(),
+  ): Promise<void> {
+    const user = await tx.user.findFirst({
       where: { id: input.userId, isActive: true },
       select: {
         locale: true,
@@ -38,41 +54,7 @@ export class NotificationProducerService {
     });
     if (!user) return;
 
-    const now = new Date();
-    await this.prisma.$transaction(async (tx) => {
-      if (user.notificationPreference?.inAppEnabled !== false) {
-        await tx.notification.create({
-          data: {
-            userId: input.userId,
-            familyId: input.familyId,
-            type: input.type,
-            title: input.title,
-            body: input.body,
-          },
-        });
-      }
-      if (
-        user.notificationPreference?.telegramEnabled &&
-        user.telegramConnection?.status === 'ACTIVE'
-      ) {
-        const availableAt = this.quietHours.nextAllowedAt(
-          now,
-          user.timeZone,
-          user.notificationPreference,
-        );
-        await this.outbox.enqueueTelegram(tx, {
-          eventId: randomUUID(),
-          schemaVersion: 1,
-          type: input.type,
-          recipientUserId: input.userId,
-          templateData: { title: input.title, ...(input.body ? { body: input.body } : {}) },
-          locale: user.locale,
-          timeZone: user.timeZone,
-          occurredAt: now.toISOString(),
-          availableAt: availableAt.toISOString(),
-        });
-      }
-    });
+    await this.dispatchToRecipient(tx, input, user, now);
   }
 
   async notifyFamilyMembers(input: {
@@ -113,33 +95,67 @@ export class NotificationProducerService {
     await this.prisma.$transaction(async (tx) => {
       for (const member of recipients) {
         const preference = byUserId.get(member.userId);
-        if (preference?.inAppEnabled !== false) {
-          await tx.notification.create({
-            data: {
-              userId: member.userId,
-              familyId: input.familyId,
-              type: input.type,
-              title: input.title,
-              body: input.body,
-            },
-          });
-        }
-        const connection = member.user.telegramConnection;
-        if (preference?.telegramEnabled && connection?.status === 'ACTIVE') {
-          const availableAt = this.quietHours.nextAllowedAt(now, member.user.timeZone, preference);
-          await this.outbox.enqueueTelegram(tx, {
-            eventId: randomUUID(),
-            schemaVersion: 1,
-            type: input.type,
-            recipientUserId: member.userId,
-            templateData: { title: input.title, ...(input.body ? { body: input.body } : {}) },
-            locale: member.user.locale,
-            timeZone: member.user.timeZone,
-            occurredAt: now.toISOString(),
-            availableAt: availableAt.toISOString(),
-          });
-        }
+        await this.dispatchToRecipient(
+          tx,
+          { ...input, userId: member.userId },
+          { ...member.user, notificationPreference: preference },
+          now,
+        );
       }
     });
+  }
+
+  private async dispatchToRecipient(
+    tx: OutboxTransaction,
+    input: DomainNotification,
+    user: {
+      locale: string;
+      timeZone: string;
+      notificationPreference:
+        | {
+            inAppEnabled?: boolean;
+            telegramEnabled: boolean;
+            quietHoursEnabled: boolean;
+            quietHoursStart: string | null;
+            quietHoursEnd: string | null;
+          }
+        | null
+        | undefined;
+      telegramConnection: { status: string } | null;
+    },
+    now: Date,
+  ): Promise<void> {
+    if (user.notificationPreference?.inAppEnabled !== false) {
+      await tx.notification.create({
+        data: {
+          userId: input.userId,
+          familyId: input.familyId,
+          type: input.type,
+          title: input.title,
+          body: input.body,
+        },
+      });
+    }
+    if (
+      user.notificationPreference?.telegramEnabled &&
+      user.telegramConnection?.status === 'ACTIVE'
+    ) {
+      const availableAt = this.quietHours.nextAllowedAt(
+        now,
+        user.timeZone,
+        user.notificationPreference,
+      );
+      await this.outbox.enqueueTelegram(tx, {
+        eventId: randomUUID(),
+        schemaVersion: 1,
+        type: input.type,
+        recipientUserId: input.userId,
+        templateData: { title: input.title, ...(input.body ? { body: input.body } : {}) },
+        locale: user.locale,
+        timeZone: user.timeZone,
+        occurredAt: now.toISOString(),
+        availableAt: availableAt.toISOString(),
+      });
+    }
   }
 }

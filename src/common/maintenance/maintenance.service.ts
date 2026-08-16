@@ -1,9 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FamilyInvitationStatus } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
-import { OutboxService } from '../outbox/outbox.service';
-import { randomUUID } from 'node:crypto';
-import { QuietHoursService } from '../notifications/quiet-hours.service';
+import { NotificationProducerService } from '../notifications/notification-producer.service';
 import { TaskRoutinesService } from '../../modules/tasks/task-routines.service';
 
 export interface CleanupResult {
@@ -29,8 +27,7 @@ export class MaintenanceService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly outbox: OutboxService,
-    private readonly quietHours: QuietHoursService,
+    private readonly notifications: NotificationProducerService,
     private readonly taskRoutines: TaskRoutinesService,
   ) {}
 
@@ -105,21 +102,6 @@ export class MaintenanceService {
       where: { sentAt: null, remindAt: { lte: now } },
       include: {
         task: true,
-        user: {
-          select: {
-            locale: true,
-            timeZone: true,
-            notificationPreference: {
-              select: {
-                telegramEnabled: true,
-                quietHoursEnabled: true,
-                quietHoursStart: true,
-                quietHoursEnd: true,
-              },
-            },
-            telegramConnection: { select: { status: true } },
-          },
-        },
       },
       take: 100,
     });
@@ -131,39 +113,17 @@ export class MaintenanceService {
           data: { sentAt: now },
         });
         if (claimed.count !== 1) return false;
-        await tx.notification.create({
-          data: {
+        await this.notifications.notifyUserInTransaction(
+          tx,
+          {
             userId: reminder.userId,
             familyId: reminder.task.familyId,
             type: 'TASK_REMINDER',
             title: reminder.task.title,
             body: 'Напоминание о задаче',
           },
-        });
-        if (
-          reminder.user.notificationPreference?.telegramEnabled &&
-          reminder.user.telegramConnection?.status === 'ACTIVE'
-        ) {
-          const availableAt = this.quietHours.nextAllowedAt(
-            now,
-            reminder.user.timeZone,
-            reminder.user.notificationPreference,
-          );
-          await this.outbox.enqueueTelegram(tx, {
-            eventId: randomUUID(),
-            schemaVersion: 1,
-            type: 'TASK_REMINDER',
-            recipientUserId: reminder.userId,
-            templateData: {
-              title: reminder.task.title,
-              body: 'Напоминание о задаче',
-            },
-            locale: reminder.user.locale,
-            timeZone: reminder.user.timeZone,
-            occurredAt: now.toISOString(),
-            availableAt: availableAt.toISOString(),
-          });
-        }
+          now,
+        );
         return true;
       });
       if (result) delivered += 1;

@@ -4,7 +4,10 @@ import { QuietHoursService } from './quiet-hours.service';
 
 describe('NotificationProducerService', () => {
   it('creates inbox and Telegram outbox messages for an active linked recipient', async () => {
-    const tx = { notification: { create: jest.fn().mockResolvedValue({}) } };
+    const tx = {
+      user: { findFirst: jest.fn() },
+      notification: { create: jest.fn().mockResolvedValue({}) },
+    };
     const prisma = {
       user: {
         findFirst: jest.fn().mockResolvedValue({
@@ -16,6 +19,7 @@ describe('NotificationProducerService', () => {
       },
       $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
     };
+    tx.user.findFirst.mockResolvedValue(prisma.user.findFirst());
     const outbox = { enqueueTelegram: jest.fn().mockResolvedValue({}) };
     const service = new NotificationProducerService(
       prisma as never,
@@ -50,7 +54,10 @@ describe('NotificationProducerService', () => {
   });
 
   it('does not enqueue Telegram when the user has no active connection', async () => {
-    const tx = { notification: { create: jest.fn().mockResolvedValue({}) } };
+    const tx = {
+      user: { findFirst: jest.fn() },
+      notification: { create: jest.fn().mockResolvedValue({}) },
+    };
     const prisma = {
       user: {
         findFirst: jest.fn().mockResolvedValue({
@@ -62,6 +69,7 @@ describe('NotificationProducerService', () => {
       },
       $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
     };
+    tx.user.findFirst.mockResolvedValue(prisma.user.findFirst());
     const enqueueTelegram = jest.fn();
     const outbox = { enqueueTelegram } as unknown as OutboxService;
     const service = new NotificationProducerService(
