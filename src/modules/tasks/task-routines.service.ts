@@ -10,12 +10,14 @@ import { FamilyMembershipService } from '../family-members/family-membership.ser
 import { AuditService } from '../../common/audit/audit.service';
 import { CreateTaskRoutineDto } from './dto/create-task-routine.dto';
 import { TaskRoutineResponseDto } from './dto/task-routine-response.dto';
+import { NotificationProducerService } from '../../common/notifications/notification-producer.service';
 @Injectable()
 export class TaskRoutinesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly membership: FamilyMembershipService,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationProducerService,
   ) {}
   async create(userId: string, dto: CreateTaskRoutineDto): Promise<TaskRoutineResponseDto> {
     const { familyId } = await this.membership.requireMembership(userId);
@@ -39,6 +41,13 @@ export class TaskRoutinesService {
       action: 'task_routine.created',
       resourceType: 'task_routine',
       resourceId: routine.id,
+    });
+    await this.notifications.notifyFamilyMembers({
+      familyId,
+      actorId: userId,
+      type: 'TASK_ROUTINE_CREATED',
+      title: 'Создана регулярная задача',
+      body: routine.title,
     });
     return TaskRoutineResponseDto.fromEntity(routine);
   }
@@ -94,6 +103,13 @@ export class TaskRoutinesService {
         routine: await tx.taskRoutine.findUniqueOrThrow({ where: { id } }),
       };
     });
+    await this.notifications.notifyFamilyMembers({
+      familyId,
+      actorId: userId,
+      type: 'TASK_ROUTINE_GENERATED',
+      title: 'Создана задача по расписанию',
+      body: result.routine.title,
+    });
     return { taskId: result.taskId, routine: TaskRoutineResponseDto.fromEntity(result.routine) };
   }
   async archive(id: string, userId: string): Promise<void> {
@@ -109,6 +125,12 @@ export class TaskRoutinesService {
       action: 'task_routine.archived',
       resourceType: 'task_routine',
       resourceId: id,
+    });
+    await this.notifications.notifyFamilyMembers({
+      familyId,
+      actorId: userId,
+      type: 'TASK_ROUTINE_ARCHIVED',
+      title: 'Регулярная задача отключена',
     });
   }
   private async ensureMember(familyId: string, userId: string): Promise<void> {

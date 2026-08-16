@@ -109,11 +109,17 @@ work сверять записи ниже с фактическими schema/con
 - Telegram linking: authenticated пользователь создаёт одноразовый 10-minute link token,
   внешний bot обменивает его на connection, пользователь читает статус и отзывает связь.
   Exchange атомарно claim-ит token, connection и `telegramEnabled`; повторное и конкурентное
-  использование запрещено. Integration endpoints выключены по умолчанию и защищены secret.
+  использование запрещено. После обмена Telegram connection бессрочна, не зависит от срока
+  JWT-сессии и остаётся `ACTIVE` до явного `/unlink`, отключения через приложение или удаления
+  аккаунта. Повторный `/start` распознаёт активную связь без нового link token. Integration
+  endpoints выключены по умолчанию и защищены secret.
 - Telegram delivery: notification producer атомарно создаёт `telegram.notify` outbox event
   для активной connection с включённым каналом. Outbox поддерживает безопасный logging
   adapter и retryable HTTP adapter к отдельному bot/gateway; chat ID не хранится в outbox,
   connection/preference повторно проверяются перед delivery, идентификаторы и content не логируются.
+- Telegram domain coverage: адресный и family-wide producer отправляет in-app/Telegram
+  сообщения для приглашений и ответов на них, family events, first date, family lifecycle,
+  task routines, задач и shopping. Due task reminders также создают Telegram outbox event.
 - Telegram bot/gateway: отдельный Nest entrypoint без доступа к БД принимает защищённый
   Telegram webhook, поддерживает `/start`/`/link`, `/status`, `/notifications`, `/unlink`,
   вызывает backend integration API и отправляет outbox delivery через Telegram Bot API.
@@ -150,7 +156,7 @@ work сверять записи ниже с фактическими schema/con
 ## Проверки на момент сверки
 
 - `npm run lint` — passed.
-- `npm test -- --runInBand` — 10 suites / 32 tests passed.
+- `npm test -- --runInBand` — 11 suites / 37 tests passed.
 - `npm run build` — passed.
 - `npm run test:e2e:verify` — 9 scenarios passed на чистой БД; все 25 миграций
   последовательно применились.
@@ -177,6 +183,8 @@ work сверять записи ниже с фактическими schema/con
   эти внешние операции намеренно не выполняются из repository.
 - Quiet hours пока хранятся как preferences, но отложенная Telegram/email доставка по ним
   ещё не рассчитывается; до подключения production transport это нужно завершить.
+- Для запуска Telegram gateway на production всё ещё нужен bot token от BotFather; без него
+  нельзя зарегистрировать webhook или выполнять реальные отправки через Telegram Bot API.
 - Public user registry оставлен ради обратной совместимости и требует privacy-решения.
 - Старые endpoint/DTO нельзя молча ломать: frontend сильно зависит от generated contract.
 - Frontend не изменять; необходимые frontend-действия фиксировать только здесь.
@@ -232,3 +240,5 @@ work сверять записи ниже с фактическими schema/con
 | 2026-08-15 | Telegram delivery hardening | validated DTO/Swagger, atomic single-use exchange, optional integration boundary, token cleanup, `telegram.notify` outbox и log/HTTP providers | generate, lint, 28 unit, 9 e2e, build, 25 migrations on clean DB | внешний Telegram bot/gateway и quiet-hours scheduling |
 | 2026-08-15 | Telegram bot/gateway | отдельный Nest entrypoint, Telegram webhook/Bot API client, link/status/notifications/unlink commands, защищённый internal delivery, Compose profile | lint, 32 unit, 9 e2e, build, Docker production image, diff-check | quiet-hours scheduling для Telegram/email |
 | 2026-08-15 | Production CI/CD | GitHub Actions test/build/GHCR/deploy pipeline, production Compose, отдельный deploy user/key, migration и health gates | lint, 32 unit, build, Compose config, server SSH/Docker smoke-check | merge PR и проверить первый production workflow |
+| 2026-08-15 | Permanent Telegram authorization | бессрочная `TelegramConnection` после одноразовой привязки; `/start` повторно использует активную связь без нового кода | targeted unit, lint, build | quiet-hours scheduling для Telegram/email |
+| 2026-08-15 | Telegram auth and domain notifications | `/auth`/`/link`/`/start` linking, persistent bot identity, direct/family notification producer; invitations, events, first date, lifecycle, tasks/routines, shopping и reminders создают Telegram outbox | lint, 37 unit, 9 e2e, build, diff-check | добавить BotFather token и включить gateway/webhook на production |

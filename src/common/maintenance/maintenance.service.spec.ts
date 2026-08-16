@@ -22,7 +22,7 @@ describe('MaintenanceService', () => {
           { count: 6 },
         ]),
     };
-    const service = new MaintenanceService(prisma as never);
+    const service = new MaintenanceService(prisma as never, {} as never);
 
     await expect(
       service.cleanupExpiredSecurityArtifacts(new Date('2026-08-15T00:00:00Z')),

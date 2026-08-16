@@ -12,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { FamilyInvitationStatus, Prisma } from '@prisma/client';
 import { createHash, randomBytes } from 'node:crypto';
 import { durationToSeconds } from '../../common/utils/duration';
+import { NotificationProducerService } from '../../common/notifications/notification-producer.service';
 import { PrismaService } from '../../database/prisma.service';
 import { AcceptPrivateFamilyInvitationDto } from './dto/accept-private-family-invitation.dto';
 import { CreateFamilyInvitationDto } from './dto/create-family-invitation.dto';
@@ -34,6 +35,7 @@ export class FamilyInvitationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly notifications: NotificationProducerService,
   ) {}
 
   async create(
@@ -81,6 +83,12 @@ export class FamilyInvitationsService {
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       );
+      await this.notifications.notifyUser({
+        userId: dto.recipientId,
+        type: 'FAMILY_INVITATION_CREATED',
+        title: 'Новое приглашение в семью',
+        body: `${invitation.sender.firstName} ${invitation.sender.lastName} приглашает вас создать семью.`,
+      });
       return FamilyInvitationResponseDto.fromEntity(invitation);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -168,6 +176,18 @@ export class FamilyInvitationsService {
 
       const frontendUrl = this.config.getOrThrow<string>('FRONTEND_APP_URL').replace(/\/+$/, '');
       const inviteUrl = `${frontendUrl}/join-family#token=${encodeURIComponent(token)}`;
+      const registeredRecipient = await this.prisma.user.findUnique({
+        where: { email: dto.recipientEmail },
+        select: { id: true },
+      });
+      if (registeredRecipient) {
+        await this.notifications.notifyUser({
+          userId: registeredRecipient.id,
+          type: 'PRIVATE_FAMILY_INVITATION_CREATED',
+          title: 'Новое приглашение в семью',
+          body: 'Для вашего email создано приватное приглашение.',
+        });
+      }
       this.logger.log({ event: 'private_family_invitation_created', invitationId: invitation.id });
       return CreatedPrivateFamilyInvitationResponseDto.fromCreatedEntity(invitation, inviteUrl);
     } catch (error) {
@@ -289,6 +309,13 @@ export class FamilyInvitationsService {
         familyId: result.familyId,
         invitationId: result.invitation.id,
       });
+      await this.notifications.notifyUser({
+        userId: result.invitation.senderId,
+        familyId: result.familyId,
+        type: 'FAMILY_INVITATION_ACCEPTED',
+        title: 'Приглашение принято',
+        body: 'Пользователь принял приглашение. Семья создана.',
+      });
       return PrivateFamilyInvitationResponseDto.fromEntity(result.invitation);
     } catch (error) {
       if (
@@ -328,6 +355,17 @@ export class FamilyInvitationsService {
     });
     if (!updated) throw new NotFoundException('Invitation not found');
     this.logger.log({ event: 'private_family_invitation_revoked', invitationId });
+    const registeredRecipient = await this.prisma.user.findUnique({
+      where: { email: invitation.recipientEmail },
+      select: { id: true },
+    });
+    if (registeredRecipient) {
+      await this.notifications.notifyUser({
+        userId: registeredRecipient.id,
+        type: 'PRIVATE_FAMILY_INVITATION_CANCELLED',
+        title: 'Приватное приглашение отменено',
+      });
+    }
     return PrivateFamilyInvitationResponseDto.fromEntity(updated);
   }
 
@@ -382,6 +420,11 @@ export class FamilyInvitationsService {
       include: invitationInclude,
     });
     if (!updated) throw new NotFoundException('Invitation not found');
+    await this.notifications.notifyUser({
+      userId: invitation.recipientId,
+      type: 'FAMILY_INVITATION_CANCELLED',
+      title: 'Приглашение отменено',
+    });
     return FamilyInvitationResponseDto.fromEntity(updated);
   }
 
@@ -457,6 +500,18 @@ export class FamilyInvitationsService {
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       );
+      await this.notifications.notifyUser({
+        userId: invitation.senderId,
+        type:
+          status === FamilyInvitationStatus.ACCEPTED
+            ? 'FAMILY_INVITATION_ACCEPTED'
+            : 'FAMILY_INVITATION_REJECTED',
+        title:
+          status === FamilyInvitationStatus.ACCEPTED
+            ? 'Приглашение принято'
+            : 'Приглашение отклонено',
+        body: `${invitation.recipient.firstName} ${invitation.recipient.lastName} ответил(а) на приглашение.`,
+      });
       return FamilyInvitationResponseDto.fromEntity(invitation);
     } catch (error) {
       if (

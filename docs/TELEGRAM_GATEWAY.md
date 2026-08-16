@@ -46,7 +46,8 @@ Telegram передаёт secret в `X-Telegram-Bot-Api-Secret-Token`; gateway �
 
 ## Команды
 
-- `/start КОД` или `/link КОД` — обмен одноразового кода из приложения;
+- `/start КОД`, `/link КОД` или `/auth КОД` — обмен одноразового кода из приложения;
+- `/start` — приветствие; для уже связанного аккаунта подтверждает бессрочную авторизацию;
 - `/status` — состояние связи;
 - `/notifications` — до 20 непрочитанных уведомлений;
 - `/unlink` — отзыв связи и выключение Telegram-канала.
@@ -55,3 +56,6 @@ Telegram передаёт secret в `X-Telegram-Bot-Api-Secret-Token`; gateway �
 Telegram user ID или текст уведомления. Отправка через Bot API имеет timeout 10 секунд;
 ошибка internal delivery возвращается backend, после чего outbox применяет существующий
 retry/backoff и dead-letter policy.
+
+После успешного обмена link token связь не истекает и не зависит от JWT-сессии web/mobile
+приложения. Она действует до `/unlink`, отключения через приложение или удаления аккаунта.

@@ -15,6 +15,7 @@ import { paginationMeta } from '../../common/dto/pagination-response.dto';
 import { PaginatedAuditEventsResponseDto } from './dto/paginated-audit-events-response.dto';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { FamilyDashboardResponseDto } from './dto/family-dashboard-response.dto';
+import { NotificationProducerService } from '../../common/notifications/notification-producer.service';
 
 @Injectable()
 export class FamiliesService {
@@ -22,6 +23,7 @@ export class FamiliesService {
     private readonly prisma: PrismaService,
     private readonly membership: FamilyMembershipService,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationProducerService,
   ) {}
 
   async findMine(userId: string): Promise<FamilyResponseDto> {
@@ -139,6 +141,12 @@ export class FamiliesService {
         tx,
       );
     });
+    await this.notifications.notifyFamilyMembers({
+      familyId: context.familyId,
+      actorId: userId,
+      type: 'FAMILY_MEMBER_LEFT',
+      title: 'Участник покинул семью',
+    });
   }
 
   async archive(userId: string): Promise<void> {
@@ -163,6 +171,12 @@ export class FamiliesService {
         },
         tx,
       );
+    });
+    await this.notifications.notifyFamilyMembers({
+      familyId: context.familyId,
+      actorId: userId,
+      type: 'FAMILY_ARCHIVED',
+      title: 'Семья архивирована',
     });
   }
 
@@ -194,6 +208,12 @@ export class FamiliesService {
         tx,
       );
     });
+    await this.notifications.notifyFamilyMembers({
+      familyId: membership.familyId,
+      actorId: userId,
+      type: 'FAMILY_RESTORED',
+      title: 'Семья восстановлена',
+    });
   }
 
   async requestDissolution(userId: string): Promise<DissolutionResponseDto> {
@@ -213,6 +233,13 @@ export class FamiliesService {
         tx,
       );
       return created;
+    });
+    await this.notifications.notifyFamilyMembers({
+      familyId: context.familyId,
+      actorId: userId,
+      type: 'FAMILY_DISSOLUTION_REQUESTED',
+      title: 'Запрошено расформирование семьи',
+      body: 'Для подтверждения требуется решение второго партнёра.',
     });
     return request;
   }
@@ -249,6 +276,12 @@ export class FamiliesService {
         tx,
       );
     });
+    await this.notifications.notifyFamilyMembers({
+      familyId: context.familyId,
+      actorId: userId,
+      type: 'FAMILY_DISSOLVED',
+      title: 'Семья расформирована',
+    });
   }
 
   async cancelDissolution(userId: string): Promise<void> {
@@ -264,6 +297,12 @@ export class FamiliesService {
         action: 'family.dissolution.cancelled',
         resourceType: 'family',
         resourceId: context.familyId,
+      });
+      await this.notifications.notifyFamilyMembers({
+        familyId: context.familyId,
+        actorId: userId,
+        type: 'FAMILY_DISSOLUTION_CANCELLED',
+        title: 'Расформирование семьи отменено',
       });
     }
   }

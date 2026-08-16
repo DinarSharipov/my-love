@@ -113,6 +113,13 @@ export class TasksService {
       resourceType: 'task',
       resourceId: id,
     });
+    await this.notifications.notifyFamilyMembers({
+      familyId,
+      actorId: userId,
+      type: 'TASK_UPDATED',
+      title: 'Задача изменена',
+      body: task.title,
+    });
     return TaskResponseDto.fromEntity(task);
   }
   async setCompleted(
@@ -170,6 +177,12 @@ export class TasksService {
       action: 'task.archived',
       resourceType: 'task',
       resourceId: id,
+    });
+    await this.notifications.notifyFamilyMembers({
+      familyId,
+      actorId: userId,
+      type: 'TASK_ARCHIVED',
+      title: 'Задача архивирована',
     });
   }
   private async ensureFamilyMember(familyId: string, userId: string): Promise<void> {

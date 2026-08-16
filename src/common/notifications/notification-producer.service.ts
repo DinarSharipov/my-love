@@ -10,6 +10,58 @@ export class NotificationProducerService {
     private readonly outbox: OutboxService,
   ) {}
 
+  async notifyUser(input: {
+    userId: string;
+    familyId?: string;
+    type: string;
+    title: string;
+    body?: string;
+  }): Promise<void> {
+    const user = await this.prisma.user.findFirst({
+      where: { id: input.userId, isActive: true },
+      select: {
+        locale: true,
+        timeZone: true,
+        notificationPreference: {
+          select: { inAppEnabled: true, telegramEnabled: true },
+        },
+        telegramConnection: { select: { status: true } },
+      },
+    });
+    if (!user) return;
+
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      if (user.notificationPreference?.inAppEnabled !== false) {
+        await tx.notification.create({
+          data: {
+            userId: input.userId,
+            familyId: input.familyId,
+            type: input.type,
+            title: input.title,
+            body: input.body,
+          },
+        });
+      }
+      if (
+        user.notificationPreference?.telegramEnabled &&
+        user.telegramConnection?.status === 'ACTIVE'
+      ) {
+        await this.outbox.enqueueTelegram(tx, {
+          eventId: randomUUID(),
+          schemaVersion: 1,
+          type: input.type,
+          recipientUserId: input.userId,
+          templateData: { title: input.title, ...(input.body ? { body: input.body } : {}) },
+          locale: user.locale,
+          timeZone: user.timeZone,
+          occurredAt: now.toISOString(),
+          availableAt: now.toISOString(),
+        });
+      }
+    });
+  }
+
   async notifyFamilyMembers(input: {
     familyId: string;
     actorId: string;

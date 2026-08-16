@@ -12,6 +12,10 @@ import { FamilyMembershipService } from '../family-members/family-membership.ser
 import { FamilyEventsService } from './family-events.service';
 
 describe('FamilyEventsService', () => {
+  const notifications = {
+    notifyFamilyMembers: jest.fn().mockResolvedValue(undefined),
+    notifyUser: jest.fn().mockResolvedValue(undefined),
+  };
   const creatorId = '2aa49af8-40fc-4f36-bb9d-246febd3dbe9';
   const partnerId = '76c40452-1f1d-4181-a15a-ec7ae187fbe4';
   const familyId = '4628fd76-11ad-41b3-a5de-6561cbc030d6';
@@ -60,7 +64,11 @@ describe('FamilyEventsService', () => {
   it('requires exactly two partners when creating an event', async () => {
     const count = jest.fn().mockResolvedValue(1);
     const prisma = { familyMember: { count } };
-    const service = new FamilyEventsService(prisma as unknown as PrismaService, membership);
+    const service = new FamilyEventsService(
+      prisma as unknown as PrismaService,
+      membership,
+      notifications as never,
+    );
 
     await expect(
       service.create(creatorId, {
@@ -104,7 +112,11 @@ describe('FamilyEventsService', () => {
         callback(transaction),
       ),
     };
-    const service = new FamilyEventsService(prisma as unknown as PrismaService, membership);
+    const service = new FamilyEventsService(
+      prisma as unknown as PrismaService,
+      membership,
+      notifications as never,
+    );
 
     const result = await service.update(eventId, creatorId, { name: 'Новый ужин' }, 1);
 
@@ -136,7 +148,11 @@ describe('FamilyEventsService', () => {
         callback(transaction),
       ),
     };
-    const service = new FamilyEventsService(prisma as unknown as PrismaService, membership);
+    const service = new FamilyEventsService(
+      prisma as unknown as PrismaService,
+      membership,
+      notifications as never,
+    );
 
     await expect(service.update(eventId, partnerId, { name: 'Подмена' })).rejects.toBeInstanceOf(
       ForbiddenException,
@@ -145,7 +161,11 @@ describe('FamilyEventsService', () => {
   });
 
   it('rejects an empty update', async () => {
-    const service = new FamilyEventsService({} as PrismaService, membership);
+    const service = new FamilyEventsService(
+      {} as PrismaService,
+      membership,
+      notifications as never,
+    );
 
     await expect(service.update(eventId, creatorId, {})).rejects.toBeInstanceOf(
       BadRequestException,

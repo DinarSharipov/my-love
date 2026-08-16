@@ -16,12 +16,14 @@ import { FamilyEventsQueryDto } from './dto/family-events-query.dto';
 import { PaginatedFamilyEventsResponseDto } from './dto/paginated-family-events-response.dto';
 import { UpdateFamilyEventDto } from './dto/update-family-event.dto';
 import { localDateStartUtc } from './local-date';
+import { NotificationProducerService } from '../../common/notifications/notification-producer.service';
 
 @Injectable()
 export class FamilyEventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly membership: FamilyMembershipService,
+    private readonly notifications: NotificationProducerService,
   ) {}
 
   async create(userId: string, dto: CreateFamilyEventDto): Promise<FamilyEventResponseDto> {
@@ -48,6 +50,13 @@ export class FamilyEventsService {
         location: dto.location,
       },
       include: familyEventInclude,
+    });
+    await this.notifications.notifyFamilyMembers({
+      familyId,
+      actorId: userId,
+      type: 'FAMILY_EVENT_PROPOSED',
+      title: 'Новое семейное событие',
+      body: `${dto.name} — требуется ваше подтверждение.`,
     });
     return FamilyEventResponseDto.fromEntity(event, timeZone);
   }
@@ -167,6 +176,13 @@ export class FamilyEventsService {
       });
     });
 
+    await this.notifications.notifyFamilyMembers({
+      familyId,
+      actorId: userId,
+      type: 'FAMILY_EVENT_UPDATED',
+      title: 'Семейное событие изменено',
+      body: `${updated.name} — требуется повторное подтверждение.`,
+    });
     return FamilyEventResponseDto.fromEntity(updated, timeZone);
   }
 
@@ -194,6 +210,12 @@ export class FamilyEventsService {
       data: { deletedAt: new Date(), deletedById: userId, version: { increment: 1 } },
     });
     if (result.count !== 1) throw new NotFoundException('Family event not found');
+    await this.notifications.notifyFamilyMembers({
+      familyId,
+      actorId: userId,
+      type: 'FAMILY_EVENT_CANCELLED',
+      title: 'Семейное событие отменено',
+    });
   }
 
   private async respond(
@@ -236,6 +258,19 @@ export class FamilyEventsService {
       include: familyEventInclude,
     });
     if (!updated) throw new NotFoundException('Family event not found');
+    await this.notifications.notifyUser({
+      userId: current.proposedById,
+      familyId,
+      type:
+        status === FamilyEventDecisionStatus.CONFIRMED
+          ? 'FAMILY_EVENT_CONFIRMED'
+          : 'FAMILY_EVENT_REJECTED',
+      title:
+        status === FamilyEventDecisionStatus.CONFIRMED
+          ? 'Событие подтверждено'
+          : 'Событие отклонено',
+      body: updated.name,
+    });
     return FamilyEventResponseDto.fromEntity(updated, timeZone, respondedAt);
   }
 }

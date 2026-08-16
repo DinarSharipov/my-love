@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FamilyInvitationStatus } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { OutboxService } from '../outbox/outbox.service';
+import { randomUUID } from 'node:crypto';
 
 export interface CleanupResult {
   sessions: number;
@@ -23,7 +25,10 @@ export interface ReminderResult {
 export class MaintenanceService {
   private readonly logger = new Logger(MaintenanceService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly outbox: OutboxService,
+  ) {}
 
   async cleanupExpiredSecurityArtifacts(now = new Date()): Promise<CleanupResult> {
     const [
@@ -94,7 +99,17 @@ export class MaintenanceService {
   async deliverDueReminders(now = new Date()): Promise<ReminderResult> {
     const reminders = await this.prisma.taskReminder.findMany({
       where: { sentAt: null, remindAt: { lte: now } },
-      include: { task: true },
+      include: {
+        task: true,
+        user: {
+          select: {
+            locale: true,
+            timeZone: true,
+            notificationPreference: { select: { telegramEnabled: true } },
+            telegramConnection: { select: { status: true } },
+          },
+        },
+      },
       take: 100,
     });
     let delivered = 0;
@@ -114,6 +129,25 @@ export class MaintenanceService {
             body: 'Напоминание о задаче',
           },
         });
+        if (
+          reminder.user.notificationPreference?.telegramEnabled &&
+          reminder.user.telegramConnection?.status === 'ACTIVE'
+        ) {
+          await this.outbox.enqueueTelegram(tx, {
+            eventId: randomUUID(),
+            schemaVersion: 1,
+            type: 'TASK_REMINDER',
+            recipientUserId: reminder.userId,
+            templateData: {
+              title: reminder.task.title,
+              body: 'Напоминание о задаче',
+            },
+            locale: reminder.user.locale,
+            timeZone: reminder.user.timeZone,
+            occurredAt: now.toISOString(),
+            availableAt: now.toISOString(),
+          });
+        }
         return true;
       });
       if (result) delivered += 1;

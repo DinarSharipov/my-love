@@ -12,12 +12,14 @@ import { FamilyMembershipService } from '../family-members/family-membership.ser
 import { CreateFirstDateDto } from './dto/create-first-date.dto';
 import { firstDateInclude, FirstDateResponseDto } from './dto/first-date-response.dto';
 import { UpdateFirstDateDto } from './dto/update-first-date.dto';
+import { NotificationProducerService } from '../../common/notifications/notification-producer.service';
 
 @Injectable()
 export class FirstDateService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly membership: FamilyMembershipService,
+    private readonly notifications: NotificationProducerService,
   ) {}
 
   async create(userId: string, dto: CreateFirstDateDto): Promise<FirstDateResponseDto> {
@@ -33,6 +35,13 @@ export class FirstDateService {
           description: dto.description || null,
         },
         include: firstDateInclude,
+      });
+      await this.notifications.notifyFamilyMembers({
+        familyId,
+        actorId: userId,
+        type: 'FIRST_DATE_CREATED',
+        title: 'Добавлена памятная дата',
+        body: dto.name,
       });
       return FirstDateResponseDto.fromEntity(firstDate);
     } catch (error: unknown) {
@@ -92,6 +101,13 @@ export class FirstDateService {
         include: firstDateInclude,
       });
     });
+    await this.notifications.notifyFamilyMembers({
+      familyId,
+      actorId: userId,
+      type: 'FIRST_DATE_UPDATED',
+      title: 'Памятная дата изменена',
+      body: firstDate.name,
+    });
     return FirstDateResponseDto.fromEntity(firstDate);
   }
 
@@ -107,5 +123,11 @@ export class FirstDateService {
     }
 
     await this.prisma.firstDate.delete({ where: { familyId } });
+    await this.notifications.notifyFamilyMembers({
+      familyId,
+      actorId: userId,
+      type: 'FIRST_DATE_DELETED',
+      title: 'Памятная дата удалена',
+    });
   }
 }

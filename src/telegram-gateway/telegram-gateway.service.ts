@@ -21,7 +21,16 @@ export class TelegramGatewayService {
     const [rawCommand = '', argument] = message.text.trim().split(/\s+/, 2);
     const command = rawCommand.toLowerCase().split('@')[0];
     try {
-      if (command === '/start' || command === '/link') {
+      if (command === '/start' && !argument) {
+        const connection = await this.backend.status(telegramUserId);
+        return this.telegram.sendMessage(
+          chatId,
+          connection?.status === 'ACTIVE'
+            ? 'Вы уже авторизованы. Повторная привязка не требуется.'
+            : this.linkHelp(),
+        );
+      }
+      if (command === '/start' || command === '/link' || command === '/auth') {
         if (!argument) return this.telegram.sendMessage(chatId, this.linkHelp());
         await this.backend.exchange(argument, telegramUserId, chatId);
         return this.telegram.sendMessage(
@@ -73,6 +82,7 @@ export class TelegramGatewayService {
   private help() {
     return [
       '/link КОД — привязать аккаунт',
+      '/auth КОД — авторизоваться по коду из приложения',
       '/status — проверить связь',
       '/notifications — непрочитанные',
       '/unlink — отключить связь',

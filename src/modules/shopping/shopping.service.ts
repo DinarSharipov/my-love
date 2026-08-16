@@ -33,6 +33,13 @@ export class ShoppingService {
       resourceType: 'shopping_list',
       resourceId: list.id,
     });
+    await this.notifications.notifyFamilyMembers({
+      familyId,
+      actorId: userId,
+      type: 'SHOPPING_LIST_CREATED',
+      title: 'Создан список покупок',
+      body: list.name,
+    });
     return list;
   }
   async addItem(userId: string, listId: string, dto: CreateShoppingItemDto) {
@@ -111,6 +118,12 @@ export class ShoppingService {
       action: 'shopping_list.archived',
       resourceType: 'shopping_list',
       resourceId: listId,
+    });
+    await this.notifications.notifyFamilyMembers({
+      familyId,
+      actorId: userId,
+      type: 'SHOPPING_LIST_ARCHIVED',
+      title: 'Список покупок архивирован',
     });
   }
 }

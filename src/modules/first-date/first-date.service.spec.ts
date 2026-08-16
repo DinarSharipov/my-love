@@ -6,6 +6,9 @@ import { FirstDateEntity } from './dto/first-date-response.dto';
 import { FirstDateService } from './first-date.service';
 
 describe('FirstDateService', () => {
+  const notifications = {
+    notifyFamilyMembers: jest.fn().mockResolvedValue(undefined),
+  };
   const creatorId = '2aa49af8-40fc-4f36-bb9d-246febd3dbe9';
   const partnerId = '76c40452-1f1d-4181-a15a-ec7ae187fbe4';
   const familyId = '4628fd76-11ad-41b3-a5de-6561cbc030d6';
@@ -59,7 +62,11 @@ describe('FirstDateService', () => {
         ),
       },
     };
-    const service = new FirstDateService(prisma as unknown as PrismaService, membership);
+    const service = new FirstDateService(
+      prisma as unknown as PrismaService,
+      membership,
+      notifications as never,
+    );
 
     await expect(
       service.create(creatorId, {
@@ -85,7 +92,11 @@ describe('FirstDateService', () => {
         callback(transaction),
       ),
     };
-    const service = new FirstDateService(prisma as unknown as PrismaService, membership);
+    const service = new FirstDateService(
+      prisma as unknown as PrismaService,
+      membership,
+      notifications as never,
+    );
 
     const result = await service.update(partnerId, { name: 'Новая подпись' }, 1);
 
@@ -103,7 +114,11 @@ describe('FirstDateService', () => {
     const prisma = {
       familyMember: { findUnique: jest.fn().mockResolvedValue({ familyId }) },
     };
-    const service = new FirstDateService(prisma as unknown as PrismaService, membership);
+    const service = new FirstDateService(
+      prisma as unknown as PrismaService,
+      membership,
+      notifications as never,
+    );
 
     await expect(service.update(partnerId, {})).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -113,7 +128,11 @@ describe('FirstDateService', () => {
       familyMember: { findUnique: jest.fn().mockResolvedValue({ familyId }) },
       firstDate: { findUnique: jest.fn().mockResolvedValue({ createdById: creatorId }) },
     };
-    const service = new FirstDateService(prisma as unknown as PrismaService, membership);
+    const service = new FirstDateService(
+      prisma as unknown as PrismaService,
+      membership,
+      notifications as never,
+    );
 
     await expect(service.remove(partnerId)).rejects.toBeInstanceOf(ForbiddenException);
   });
