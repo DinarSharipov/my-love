@@ -28,6 +28,11 @@ work сверять записи ниже с фактическими schema/con
 - Последний инфраструктурный hardening-срез: единый transactional notification producer
   для всех текущих domain events и due reminders.
 - Текущий срез: настраиваемые Telegram-напоминания для family events.
+- Приоритет реализации: сначала завершать основной пользовательский функционал
+  (ближайший backend-срез — финансовые income/expense/transfer-команды). Production
+  SMTP, security/privacy hardening, reliability-настройки и расширенное E2E/CI-покрытие
+  сознательно отложены в финальный этап стабилизации перед релизной готовностью, если
+  только не станут блокером для уже выбранной продуктовой функции.
 
 ## Реализовано
 
@@ -211,6 +216,10 @@ entries, reversal link и `FinancialCommandResult`. Deferred PostgreSQL triggers
 
 ## Известные пробелы и решения
 
+- Отложено до финального этапа стабилизации: production SMTP, не блокирующие основной
+  функционал security/privacy улучшения, reliability hardening и расширение E2E/CI.
+  Эти работы не должны прерывать реализацию продуктовых доменов без отдельного решения.
+
 - Нет production email-доставки: локальный Mailpit принимает SMTP-письма, но не
   пересылает их наружу. Для production задаются SMTP реквизиты отдельного провайдера.
 - Для password reset нельзя хранить raw token/link в outbox payload; перед реализацией
@@ -317,3 +326,4 @@ entries, reversal link и `FinancialCommandResult`. Deferred PostgreSQL triggers
 | 2026-08-16 | Financial schema foundation | ADR 0006, migration `20260816000000_add_financial_foundation`: wallet, immutable balanced ledger, reversal и transactional command result | generate, validate, lint, 21 suites / 59 unit, 10 e2e, 26 migrations, build, diff-check | wallet API и idempotent ledger commands |
 | 2026-08-16 | Financial wallet API | `POST/GET/PATCH/DELETE /families/me/wallets`; server-owned family/owner, PRIVATE/PARTNER/FAMILY reads, partner-only family wallet management, concurrency и audit | lint, 22 suites / 64 unit, build, diff-check | idempotent ledger commands |
 | 2026-08-16 | Notification channel policy | domain notifications только in-app/Telegram; email только security/account recovery; production bot readiness checklist | code/config audit | production gateway wiring после получения hostname/token/secrets |
+| 2026-08-16 | Приоритизация roadmap | основной пользовательский функционал впереди; SMTP, hardening и расширенные E2E/CI отложены до финальной стабилизации | status review | idempotent financial ledger commands |
