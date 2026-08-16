@@ -131,6 +131,7 @@ export class LedgerCommandsService {
           occurredAt: this.occurredAt(dto.occurredAt),
           note: dto.note,
           reversesId: original.id,
+          categoryId: original.categoryId ?? undefined,
           entries: original.entries.map((entry) => ({
             walletId: entry.walletId,
             amountMinor: -entry.amountMinor,
@@ -167,12 +168,21 @@ export class LedgerCommandsService {
         });
         if (!wallet || !this.canManage(wallet, userId, context.role))
           throw new NotFoundException('Wallet not found');
+        if (dto.categoryId) {
+          const category = await tx.financialCategory.findFirst({
+            where: { id: dto.categoryId, familyId: context.familyId, archivedAt: null },
+          });
+          const expectedKind = type === LedgerTransactionType.INCOME ? 'INCOME' : 'EXPENSE';
+          if (!category || category.kind !== expectedKind)
+            throw new NotFoundException('Financial category not found');
+        }
         const walletAmount = type === LedgerTransactionType.INCOME ? amount : -amount;
         return this.persist(tx, userId, context.familyId, key, requestHash, {
           type,
           currency: wallet.currency,
           occurredAt: this.occurredAt(dto.occurredAt),
           note: dto.note,
+          categoryId: dto.categoryId,
           entries: [
             { walletId: wallet.id, amountMinor: walletAmount },
             { walletId: null, amountMinor: -walletAmount },
@@ -196,6 +206,7 @@ export class LedgerCommandsService {
       occurredAt: Date;
       note?: string;
       reversesId?: string;
+      categoryId?: string;
       entries: Array<{ walletId: string | null; amountMinor: bigint }>;
     },
   ) {
@@ -208,6 +219,7 @@ export class LedgerCommandsService {
         occurredAt: input.occurredAt,
         note: input.note,
         reversesId: input.reversesId,
+        categoryId: input.categoryId,
         entries: { create: input.entries },
       },
       include: transactionInclude,

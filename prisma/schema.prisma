@@ -92,6 +92,11 @@ enum LedgerTransactionType {
   REVERSAL
 }
 
+enum FinancialCategoryKind {
+  INCOME
+  EXPENSE
+}
+
 model User {
   id                         String                     @id @default(uuid()) @db.Uuid
   firstName                  String                     @map("first_name") @db.VarChar(100)
@@ -145,6 +150,8 @@ model User {
   createdWallets             Wallet[]                   @relation("WalletCreator")
   createdLedgerTransactions  LedgerTransaction[]        @relation("LedgerTransactionCreator")
   financialCommandResults    FinancialCommandResult[]
+  createdFinancialCategories FinancialCategory[]        @relation("FinancialCategoryCreator")
+  createdBudgets             Budget[]                   @relation("BudgetCreator")
 
   @@index([lastName, firstName], map: "users_last_name_first_name_idx")
   @@map("users")
@@ -171,6 +178,8 @@ model Family {
   notifications       Notification[]
   wallets             Wallet[]
   ledgerTransactions  LedgerTransaction[]
+  financialCategories FinancialCategory[]
+  budgets             Budget[]
 
   @@map("families")
 }
@@ -387,31 +396,31 @@ model FirstDate {
 }
 
 model FamilyEvent {
-  id            String                    @id @default(uuid()) @db.Uuid
-  familyId      String                    @map("family_id") @db.Uuid
-  proposedById  String                    @map("proposed_by_id") @db.Uuid
-  respondedById String?                   @map("responded_by_id") @db.Uuid
-  deletedById   String?                   @map("deleted_by_id") @db.Uuid
-  name          String                    @db.VarChar(200)
-  description   String?                   @db.Text
-  scheduledAt   DateTime                  @map("scheduled_at")
-  location      String                    @db.VarChar(500)
-  reminderOffsetMinutes Int?              @map("reminder_offset_minutes")
-  reminderRecipientIds   String[]         @default([]) @map("reminder_recipient_ids") @db.Uuid
-  reminderAt             DateTime?        @map("reminder_at")
-  reminderSentAt         DateTime?        @map("reminder_sent_at")
-  repeatReminderAt       DateTime?        @map("repeat_reminder_at")
-  repeatReminderSentAt   DateTime?        @map("repeat_reminder_sent_at")
-  status        FamilyEventDecisionStatus @default(PROPOSED)
-  respondedAt   DateTime?                 @map("responded_at")
-  deletedAt     DateTime?                 @map("deleted_at")
-  version       Int                       @default(1)
-  createdAt     DateTime                  @default(now()) @map("created_at")
-  updatedAt     DateTime                  @updatedAt @map("updated_at")
-  family        Family                    @relation(fields: [familyId], references: [id], onDelete: Cascade)
-  proposedBy    User                      @relation("FamilyEventProposer", fields: [proposedById], references: [id], onDelete: Restrict)
-  respondedBy   User?                     @relation("FamilyEventResponder", fields: [respondedById], references: [id], onDelete: Restrict)
-  deletedBy     User?                     @relation("FamilyEventDeleter", fields: [deletedById], references: [id], onDelete: Restrict)
+  id                    String                    @id @default(uuid()) @db.Uuid
+  familyId              String                    @map("family_id") @db.Uuid
+  proposedById          String                    @map("proposed_by_id") @db.Uuid
+  respondedById         String?                   @map("responded_by_id") @db.Uuid
+  deletedById           String?                   @map("deleted_by_id") @db.Uuid
+  name                  String                    @db.VarChar(200)
+  description           String?                   @db.Text
+  scheduledAt           DateTime                  @map("scheduled_at")
+  location              String                    @db.VarChar(500)
+  reminderOffsetMinutes Int?                      @map("reminder_offset_minutes")
+  reminderRecipientIds  String[]                  @default([]) @map("reminder_recipient_ids") @db.Uuid
+  reminderAt            DateTime?                 @map("reminder_at")
+  reminderSentAt        DateTime?                 @map("reminder_sent_at")
+  repeatReminderAt      DateTime?                 @map("repeat_reminder_at")
+  repeatReminderSentAt  DateTime?                 @map("repeat_reminder_sent_at")
+  status                FamilyEventDecisionStatus @default(PROPOSED)
+  respondedAt           DateTime?                 @map("responded_at")
+  deletedAt             DateTime?                 @map("deleted_at")
+  version               Int                       @default(1)
+  createdAt             DateTime                  @default(now()) @map("created_at")
+  updatedAt             DateTime                  @updatedAt @map("updated_at")
+  family                Family                    @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  proposedBy            User                      @relation("FamilyEventProposer", fields: [proposedById], references: [id], onDelete: Restrict)
+  respondedBy           User?                     @relation("FamilyEventResponder", fields: [respondedById], references: [id], onDelete: Restrict)
+  deletedBy             User?                     @relation("FamilyEventDeleter", fields: [deletedById], references: [id], onDelete: Restrict)
 
   @@index([familyId, scheduledAt])
   @@index([proposedById])
@@ -605,16 +614,57 @@ model LedgerTransaction {
   occurredAt  DateTime                @map("occurred_at")
   note        String?                 @db.VarChar(500)
   reversesId  String?                 @unique @map("reverses_id") @db.Uuid
+  categoryId  String?                 @map("category_id") @db.Uuid
   createdAt   DateTime                @default(now()) @map("created_at")
   family      Family                  @relation(fields: [familyId], references: [id], onDelete: Restrict)
   createdBy   User                    @relation("LedgerTransactionCreator", fields: [createdById], references: [id], onDelete: Restrict)
   reverses    LedgerTransaction?      @relation("LedgerReversal", fields: [reversesId], references: [id], onDelete: Restrict)
   reversedBy  LedgerTransaction?      @relation("LedgerReversal")
+  category    FinancialCategory?      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   entries     LedgerEntry[]
   command     FinancialCommandResult?
 
   @@index([familyId, occurredAt, id])
+  @@index([categoryId, occurredAt])
   @@map("ledger_transactions")
+}
+
+model FinancialCategory {
+  id           String                @id @default(uuid()) @db.Uuid
+  familyId     String                @map("family_id") @db.Uuid
+  createdById  String                @map("created_by_id") @db.Uuid
+  name         String                @db.VarChar(120)
+  kind         FinancialCategoryKind
+  version      Int                   @default(1)
+  archivedAt   DateTime?             @map("archived_at")
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+  family       Family                @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdBy    User                  @relation("FinancialCategoryCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  transactions LedgerTransaction[]
+  budgets      Budget[]
+
+  @@index([familyId, kind, archivedAt])
+  @@map("financial_categories")
+}
+
+model Budget {
+  id          String            @id @default(uuid()) @db.Uuid
+  familyId    String            @map("family_id") @db.Uuid
+  categoryId  String            @map("category_id") @db.Uuid
+  createdById String            @map("created_by_id") @db.Uuid
+  periodStart DateTime          @map("period_start") @db.Date
+  limitMinor  BigInt            @map("limit_minor")
+  version     Int               @default(1)
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  family      Family            @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  category    FinancialCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  createdBy   User              @relation("BudgetCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([categoryId, periodStart])
+  @@index([familyId, periodStart])
+  @@map("budgets")
 }
 
 model LedgerEntry {

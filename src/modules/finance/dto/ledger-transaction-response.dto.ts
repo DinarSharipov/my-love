@@ -18,6 +18,7 @@ export class LedgerTransactionResponseDto {
   @ApiProperty({ format: 'date-time' }) occurredAt: Date;
   @ApiPropertyOptional({ nullable: true }) note: string | null;
   @ApiPropertyOptional({ format: 'uuid', nullable: true }) reversesId: string | null;
+  @ApiPropertyOptional({ format: 'uuid', nullable: true }) categoryId: string | null;
   @ApiProperty({ format: 'date-time' }) createdAt: Date;
   @ApiProperty({ type: [LedgerEntryResponseDto] }) entries: LedgerEntryResponseDto[];
 }

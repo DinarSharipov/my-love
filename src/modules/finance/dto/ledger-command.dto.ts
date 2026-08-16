@@ -6,6 +6,14 @@ export class CreateLedgerCommandDto {
   @IsUUID('4')
   walletId: string;
 
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Family category for this income or expense.',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  categoryId?: string;
+
   @ApiProperty({
     description: 'Positive amount in minor currency units. JSON numbers are not accepted.',
     example: '125000',
