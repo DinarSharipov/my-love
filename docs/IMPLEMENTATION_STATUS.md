@@ -36,10 +36,11 @@ work сверять записи ниже с фактическими schema/con
   фактическими доходами/расходами по категориям и остатком budget limit.
 - Последний завершённый финансовый срез: financial goals/envelopes — выделенный wallet
   на цель, ledger-backed progress и идемпотентные пополнения.
-- Следующий срез: financial analytics — cash flow по месяцам, обязательные платежи,
-  прогноз остатка и сводные показатели семьи.
+- Последний завершённый финансовый срез: visibility-safe financial analytics —
+  cash flow по месяцам, обязательные регулярные платежи и прогноз доступных остатков.
+- Следующий срез: financial meetings/decisions либо переход к wellbeing-домену.
 - Приоритет реализации: сначала завершать основной пользовательский функционал
-  (ближайший backend-срез — financial analytics и прогнозы). Production
+  (ближайший backend-срез — financial meetings/decisions либо wellbeing). Production
   SMTP, security/privacy hardening, reliability-настройки и расширенное E2E/CI-покрытие
   сознательно отложены в финальный этап стабилизации перед релизной готовностью, если
   только не станут блокером для уже выбранной продуктовой функции.
@@ -252,10 +253,19 @@ transfer, contribution и command idempotency result. Private source wallet не
 producer. Активный goal защищает свой envelope от generic wallet archive; после archive
 цели сам wallet остаётся доступным для истории и дальнейшего ручного управления.
 
+Financial analytics — additive read model без новой persistence-проекции:
+`GET /api/v1/families/me/finance/analytics?periodStart=YYYY-MM-01&months=1..12&forecastDays=1..365`.
+Она возвращает фактические income/expense/net по месяцам и валютам, план активных
+регулярных операций и projected balance. Фактическая часть и баланс используют тот же
+predicate полной видимости ledger transaction, что и history; регулярные операции
+ограничены видимыми wallet. Поэтому личные суммы и планы не попадают партнёру без
+видимости кошелька. Значения — строки minor units; FX conversion отсутствует. Прогноз
+не создаёт ledger transaction и не считает regular payment фактической операцией.
+
 ## Проверки на момент сверки
 
 - `npm run lint` — passed.
-- `npm test -- --runInBand` — 28 suites / 80 tests passed.
+- `npm test -- --runInBand` — 29 suites / 82 tests passed.
 - `npm run build` — passed.
 - `npm run test:e2e:verify` — 10 scenarios passed на чистой БД; все 30 миграций
   последовательно применились.
@@ -360,6 +370,13 @@ producer. Активный goal защищает свой envelope от generic 
   передавать `If-Match` из `version`; для каждого пополнения — новый `Idempotency-Key`.
   Показывать `currentAmountMinor`/`remainingAmountMinor` как строки. В текущем frontend RTK
   Query этих endpoint ещё нет; существующие contracts wallets/ledger не изменены.
+- Frontend follow-up (выполняет отдельный frontend-агент): добавить finance analytics через
+  `GET /families/me/finance/analytics?periodStart=YYYY-MM-01&months=1..12&forecastDays=1..365`.
+  `cashFlow[].actual` — фактический поток, `cashFlow[].mandatory` — только план активных
+  recurring payments; оба разделены по currency и содержат строковые `incomeMinor`,
+  `expenseMinor`, `netMinor`. `balanceForecast` содержит доступный текущий остаток и
+  прогноз на окно `forecastAsOf`–`forecastThrough`; это не банковская сверка и не
+  auto-posting. Endpoint additive, текущие RTK Query contracts не изменены.
 
 ## Журнал backend-срезов
 
@@ -416,5 +433,6 @@ producer. Активный goal защищает свой envelope от generic 
 | 2026-08-16 | Recurring payments                     | миграция `20260816030000_add_recurring_payments`; wallet/category-scoped WEEKLY/MONTHLY forecast, CRUD/visibility/concurrency, durable claim и unified in-app/Telegram reminders; без auto-posting в ledger | generate, lint, 26 unit suites / 76 tests, чистый 29-migration E2E, build, diff-check   | financial summary и фактические budget totals                     |
 | 2026-08-16 | Financial summary                      | `GET /families/me/finance/summary`; monthly category totals из visibility-safe immutable ledger, budget actual/remaining в default currency и отдельные totals для каждой currency без FX              | lint, targeted unit, build, diff-check                                                   | financial goals/envelopes                                         |
 | 2026-08-17 | Financial goals/envelopes              | миграция `20260816040000_add_financial_goals`; dedicated envelope wallet, ledger-derived progress, idempotent contribution transfer и achievement notification                                      | generate, lint, 28 unit suites / 80 tests, чистый 30-migration E2E, build, diff-check   | financial analytics                                               |
+| 2026-08-17 | Financial analytics                    | `GET /families/me/finance/analytics`; visibility-safe multi-month actual cash flow, recurring mandatory plan и projected visible balances без новой projection/auto-posting                              | targeted/full unit, lint, clean 30-migration E2E, build, diff-check                     | financial meetings/decisions или wellbeing                        |
 | 2026-08-16 | Notification channel policy            | domain notifications только in-app/Telegram; email только security/account recovery; production bot readiness checklist                                                                                     | code/config audit                                                                       | production gateway wiring после получения hostname/token/secrets  |
 | 2026-08-16 | Приоритизация roadmap                  | основной пользовательский функционал впереди; SMTP, hardening и расширенные E2E/CI отложены до финальной стабилизации                                                                                       | status review                                                                           | idempotent financial ledger commands                              |

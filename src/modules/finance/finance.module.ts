@@ -16,6 +16,8 @@ import { FinancialSummaryController } from './financial-summary.controller';
 import { FinancialSummaryService } from './financial-summary.service';
 import { FinancialGoalsController } from './financial-goals.controller';
 import { FinancialGoalsService } from './financial-goals.service';
+import { FinancialAnalyticsController } from './financial-analytics.controller';
+import { FinancialAnalyticsService } from './financial-analytics.service';
 
 @Module({
   imports: [FamilyMembersModule, NotificationProducerModule],
@@ -27,6 +29,7 @@ import { FinancialGoalsService } from './financial-goals.service';
     RecurringPaymentsController,
     FinancialSummaryController,
     FinancialGoalsController,
+    FinancialAnalyticsController,
   ],
   providers: [
     WalletsService,
@@ -37,6 +40,7 @@ import { FinancialGoalsService } from './financial-goals.service';
     RecurringPaymentsService,
     FinancialSummaryService,
     FinancialGoalsService,
+    FinancialAnalyticsService,
   ],
   exports: [WalletsService, RecurringPaymentsService],
 })
