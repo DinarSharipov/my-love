@@ -107,3 +107,17 @@ jobs:
           done
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" 'cd /opt/my-love && docker compose logs --tail=100 api caddy'
           exit 1
+      - name: Register Telegram webhook
+        env:
+          PRODUCTION_ENV: ${{ secrets.PRODUCTION_ENV }}
+        run: |
+          bot_token=$(printf '%s\n' "$PRODUCTION_ENV" | sed -n 's/^TELEGRAM_BOT_TOKEN=//p' | tail -n 1)
+          webhook_secret=$(printf '%s\n' "$PRODUCTION_ENV" | sed -n 's/^TELEGRAM_WEBHOOK_SECRET=//p' | tail -n 1)
+          if [ -z "$bot_token" ] || [ -z "$webhook_secret" ]; then
+            echo 'Telegram webhook skipped: TELEGRAM_BOT_TOKEN or TELEGRAM_WEBHOOK_SECRET is absent from PRODUCTION_ENV.'
+            exit 0
+          fi
+          curl --fail --silent --show-error -X POST "https://api.telegram.org/bot${bot_token}/setWebhook" \
+            -H 'content-type: application/json' \
+            --data "$(WEBHOOK_SECRET="$webhook_secret" node -e 'console.log(JSON.stringify({url:"https://bot.147.45.124.221.sslip.io/webhook",secret_token:process.env.WEBHOOK_SECRET,allowed_updates:["message"]}))')" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!x.ok)process.exit(1);console.log("Telegram webhook registered")})'
