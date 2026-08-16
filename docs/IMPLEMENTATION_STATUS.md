@@ -36,9 +36,9 @@ work сверять записи ниже с фактическими schema/con
   фактическими доходами/расходами по категориям и остатком budget limit.
 - Последний завершённый финансовый срез: financial goals/envelopes — выделенный wallet
   на цель, ledger-backed progress и идемпотентные пополнения.
-- Последний завершённый финансовый срез: visibility-safe financial analytics —
-  cash flow по месяцам, обязательные регулярные платежи и прогноз доступных остатков.
-- Следующий срез: financial meetings/decisions либо переход к wellbeing-домену.
+- Последний завершённый финансовый срез: совместные financial meetings/decisions —
+  планирование финансовой встречи и подтверждаемое вторым партнёром решение.
+- Следующий срез: wellbeing-домен.
 - Приоритет реализации: сначала завершать основной пользовательский функционал
   (ближайший backend-срез — financial meetings/decisions либо wellbeing). Production
   SMTP, security/privacy hardening, reliability-настройки и расширенное E2E/CI-покрытие
@@ -223,7 +223,7 @@ work сверять записи ниже с фактическими schema/con
 ## Миграции
 
 Применяются только новыми файлами; текущая последняя миграция:
-`20260816040000_add_financial_goals`. Всего 30 миграций.
+`20260817010000_add_financial_meetings`. Всего 31 миграция.
 
 Financial foundation добавляет personal/family wallets, append-only ledger transactions/
 entries, reversal link и `FinancialCommandResult`. Deferred PostgreSQL triggers требуют
@@ -261,6 +261,14 @@ predicate полной видимости ledger transaction, что и history;
 ограничены видимыми wallet. Поэтому личные суммы и планы не попадают партнёру без
 видимости кошелька. Значения — строки minor units; FX conversion отсутствует. Прогноз
 не создаёт ledger transaction и не считает regular payment фактической операцией.
+
+Миграция `20260817010000_add_financial_meetings` добавляет partner-only сущности
+`FinancialMeeting` и вложенные `FinancialDecision`. Встреча имеет расписание, заметки,
+статус и version; решение создаётся в рамках встречи, а согласовать либо отклонить его
+может только второй партнёр. Отменённая встреча не принимает новых решений. Все изменения
+пишутся в audit; адресные уведомления второму партнёру или автору решения проходят через
+единый in-app/Telegram producer в той же транзакции. Это отдельный coordination-домен:
+он не раскрывает сумму, wallet или ledger data и не создаёт финансовую операцию.
 
 ## Проверки на момент сверки
 
@@ -377,6 +385,12 @@ predicate полной видимости ledger transaction, что и history;
   `expenseMinor`, `netMinor`. `balanceForecast` содержит доступный текущий остаток и
   прогноз на окно `forecastAsOf`–`forecastThrough`; это не банковская сверка и не
   auto-posting. Endpoint additive, текущие RTK Query contracts не изменены.
+- Frontend follow-up (выполняет отдельный frontend-агент): добавить partner-only экран
+  финансовых встреч: `POST/GET/PATCH/DELETE /families/me/financial-meetings`,
+  `POST /:id/complete`, создание решения `POST /:id/decisions` и ответ второго партнёра
+  `POST /:meetingId/decisions/:decisionId/respond`. Для update/complete/delete/respond
+  передавать `If-Match` из `version`; решение принимает только `AGREED` или `REJECTED`.
+  В текущем frontend RTK Query этих endpoint нет; существующие contracts не изменены.
 
 ## Журнал backend-срезов
 
@@ -431,8 +445,9 @@ predicate полной видимости ledger transaction, что и history;
 | 2026-08-16 | Ledger history и reversal              | `GET /families/me/ledger`, `GET /:id`, `POST /:id/reversal`; paginated visibility-safe history, immutable inverse entries, idempotency и race-safe single reversal                                          | 24 unit suites / 71 tests, lint, build, diff-check                                      | budgets и recurring financial operations                          |
 | 2026-08-16 | Budget categories                      | миграция `20260816020000_add_budget_categories`; family income/expense categories, optional category в income/expense/reversal ledger, CRUD месячных expense budget limits с optimistic locking и audit     | generate, 25 unit suites / 74 tests, lint, чистый 28-migration E2E, build, diff-check   | recurring payment forecast/reminders                              |
 | 2026-08-16 | Recurring payments                     | миграция `20260816030000_add_recurring_payments`; wallet/category-scoped WEEKLY/MONTHLY forecast, CRUD/visibility/concurrency, durable claim и unified in-app/Telegram reminders; без auto-posting в ledger | generate, lint, 26 unit suites / 76 tests, чистый 29-migration E2E, build, diff-check   | financial summary и фактические budget totals                     |
-| 2026-08-16 | Financial summary                      | `GET /families/me/finance/summary`; monthly category totals из visibility-safe immutable ledger, budget actual/remaining в default currency и отдельные totals для каждой currency без FX              | lint, targeted unit, build, diff-check                                                   | financial goals/envelopes                                         |
-| 2026-08-17 | Financial goals/envelopes              | миграция `20260816040000_add_financial_goals`; dedicated envelope wallet, ledger-derived progress, idempotent contribution transfer и achievement notification                                      | generate, lint, 28 unit suites / 80 tests, чистый 30-migration E2E, build, diff-check   | financial analytics                                               |
-| 2026-08-17 | Financial analytics                    | `GET /families/me/finance/analytics`; visibility-safe multi-month actual cash flow, recurring mandatory plan и projected visible balances без новой projection/auto-posting                              | targeted/full unit, lint, clean 30-migration E2E, build, diff-check                     | financial meetings/decisions или wellbeing                        |
+| 2026-08-16 | Financial summary                      | `GET /families/me/finance/summary`; monthly category totals из visibility-safe immutable ledger, budget actual/remaining в default currency и отдельные totals для каждой currency без FX                   | lint, targeted unit, build, diff-check                                                  | financial goals/envelopes                                         |
+| 2026-08-17 | Financial goals/envelopes              | миграция `20260816040000_add_financial_goals`; dedicated envelope wallet, ledger-derived progress, idempotent contribution transfer и achievement notification                                              | generate, lint, 28 unit suites / 80 tests, чистый 30-migration E2E, build, diff-check   | financial analytics                                               |
+| 2026-08-17 | Financial analytics                    | `GET /families/me/finance/analytics`; visibility-safe multi-month actual cash flow, recurring mandatory plan и projected visible balances без новой projection/auto-posting                                 | targeted/full unit, lint, clean 30-migration E2E, build, diff-check                     | financial meetings/decisions или wellbeing                        |
+| 2026-08-17 | Financial meetings/decisions           | Миграция `20260817010000_add_financial_meetings`; partner-only meetings, nested decisions, second-partner response и transactional Telegram/in-app notifications                                            | targeted/full unit, lint, clean 31-migration E2E, build, diff-check                     | wellbeing-домен                                                   |
 | 2026-08-16 | Notification channel policy            | domain notifications только in-app/Telegram; email только security/account recovery; production bot readiness checklist                                                                                     | code/config audit                                                                       | production gateway wiring после получения hostname/token/secrets  |
 | 2026-08-16 | Приоритизация roadmap                  | основной пользовательский функционал впереди; SMTP, hardening и расширенные E2E/CI отложены до финальной стабилизации                                                                                       | status review                                                                           | idempotent financial ledger commands                              |
