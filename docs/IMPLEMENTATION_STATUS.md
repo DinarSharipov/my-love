@@ -30,10 +30,12 @@ work сверять записи ниже с фактическими schema/con
   для всех текущих domain events и due reminders.
 - Последний завершённый финансовый срез: категории доходов/расходов и месячные
   budget limits с привязкой category к immutable income/expense ledger transaction.
-- Текущий срез: регулярные финансовые операции и их forecast/reminders поверх
-  завершённых wallet, ledger и budget foundations.
+- Последний завершённый финансовый срез: регулярные финансовые операции с forecast и
+  Telegram/in-app reminders; они не создают ledger запись автоматически.
+- Следующий срез: financial summary read model (фактические расходы по категориям и
+  budget limits) поверх visibility-safe immutable ledger.
 - Приоритет реализации: сначала завершать основной пользовательский функционал
-  (ближайший backend-срез — budgets и recurring financial operations). Production
+  (ближайший backend-срез — financial summary и фактические budget totals). Production
   SMTP, security/privacy hardening, reliability-настройки и расширенное E2E/CI-покрытие
   сознательно отложены в финальный этап стабилизации перед релизной готовностью, если
   только не станут блокером для уже выбранной продуктовой функции.
@@ -216,7 +218,7 @@ work сверять записи ниже с фактическими schema/con
 ## Миграции
 
 Применяются только новыми файлами; текущая последняя миграция:
-`20260816020000_add_budget_categories`. Всего 28 миграций.
+`20260816030000_add_recurring_payments`. Всего 29 миграций.
 
 Financial foundation добавляет personal/family wallets, append-only ledger transactions/
 entries, reversal link и `FinancialCommandResult`. Deferred PostgreSQL triggers требуют
@@ -225,6 +227,11 @@ entries, reversal link и `FinancialCommandResult`. Deferred PostgreSQL triggers
 `INCOME`/`EXPENSE`, optional category к ledger transaction и budget лимит expense-category
 на первый день календарного месяца. Бюджет — план, а не изменяемый баланс: его фактическая
 сумма будет строиться из видимых immutable ledger entries в summary read model.
+
+Миграция `20260816030000_add_recurring_payments` добавляет регулярные INCOME/EXPENSE
+операции, их следующий forecast и отдельный claim состояния напоминания. Они привязаны
+к доступному wallet и optional category, но намеренно не создают ledger transaction:
+фактическая операция по-прежнему вносится пользователем явно.
 
 ## Проверки на момент сверки
 
@@ -314,6 +321,12 @@ entries, reversal link и `FinancialCommandResult`. Deferred PostgreSQL triggers
   лимиты `POST/GET/PATCH/DELETE /families/me/budgets`. `periodStart` — строка первого дня
   месяца `YYYY-MM-01`, `limitMinor` — строка minor units; budget доступен только для
   expense category. Для PATCH/DELETE передавать `If-Match` из `version`.
+- Frontend follow-up (выполняет отдельный frontend-агент): добавить экран регулярных
+  операций: `POST/GET/PATCH/DELETE /families/me/recurring-payments` и
+  `GET /families/me/recurring-payments/:id/forecasts`. `amountMinor` передаётся и
+  возвращается строкой; `nextDueAt` — ISO datetime; период — WEEKLY/MONTHLY с
+  `interval`; получатели Telegram/in-app reminder задаются в `reminderRecipientIds`.
+  Создание регулярной операции — это прогноз, а не автоматическое изменение баланса.
 
 ## Журнал backend-срезов
 
@@ -367,5 +380,6 @@ entries, reversal link и `FinancialCommandResult`. Deferred PostgreSQL triggers
 | 2026-08-16 | Ledger commands | `POST /families/me/ledger/income`, `/expense`, `/transfer`; mandatory command-local idempotency, immutable balanced entries, wallet access/currency validation и safe string minor-unit response | generate, targeted unit, lint, build, diff-check | ledger history и reversal commands |
 | 2026-08-16 | Ledger history и reversal | `GET /families/me/ledger`, `GET /:id`, `POST /:id/reversal`; paginated visibility-safe history, immutable inverse entries, idempotency и race-safe single reversal | 24 unit suites / 71 tests, lint, build, diff-check | budgets и recurring financial operations |
 | 2026-08-16 | Budget categories | миграция `20260816020000_add_budget_categories`; family income/expense categories, optional category в income/expense/reversal ledger, CRUD месячных expense budget limits с optimistic locking и audit | generate, 25 unit suites / 74 tests, lint, чистый 28-migration E2E, build, diff-check | recurring payment forecast/reminders |
+| 2026-08-16 | Recurring payments | миграция `20260816030000_add_recurring_payments`; wallet/category-scoped WEEKLY/MONTHLY forecast, CRUD/visibility/concurrency, durable claim и unified in-app/Telegram reminders; без auto-posting в ledger | generate, lint, 26 unit suites / 76 tests, чистый 29-migration E2E, build, diff-check | financial summary и фактические budget totals |
 | 2026-08-16 | Notification channel policy | domain notifications только in-app/Telegram; email только security/account recovery; production bot readiness checklist | code/config audit | production gateway wiring после получения hostname/token/secrets |
 | 2026-08-16 | Приоритизация roadmap | основной пользовательский функционал впереди; SMTP, hardening и расширенные E2E/CI отложены до финальной стабилизации | status review | idempotent financial ledger commands |

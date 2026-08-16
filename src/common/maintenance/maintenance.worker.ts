@@ -36,6 +36,7 @@ export class MaintenanceWorker implements OnModuleInit, OnModuleDestroy {
     try {
       await this.maintenance.cleanupExpiredSecurityArtifacts();
       await this.maintenance.generateDueTaskRoutines();
+      await this.maintenance.generateDueRecurringPaymentForecasts();
       if (this.config.get<boolean>('RETENTION_WORKER_ENABLED', false)) {
         await this.maintenance.anonymizeExpiredAccounts();
       }

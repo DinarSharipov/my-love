@@ -9,6 +9,8 @@ import { FinancialCategoriesController } from './financial-categories.controller
 import { FinancialCategoriesService } from './financial-categories.service';
 import { BudgetsController } from './budgets.controller';
 import { BudgetsService } from './budgets.service';
+import { RecurringPaymentsController } from './recurring-payments.controller';
+import { RecurringPaymentsService } from './recurring-payments.service';
 
 @Module({
   imports: [FamilyMembersModule],
@@ -17,6 +19,7 @@ import { BudgetsService } from './budgets.service';
     LedgerCommandsController,
     FinancialCategoriesController,
     BudgetsController,
+    RecurringPaymentsController,
   ],
   providers: [
     WalletsService,
@@ -24,7 +27,8 @@ import { BudgetsService } from './budgets.service';
     LedgerHistoryService,
     FinancialCategoriesService,
     BudgetsService,
+    RecurringPaymentsService,
   ],
-  exports: [WalletsService],
+  exports: [WalletsService, RecurringPaymentsService],
 })
 export class FinanceModule {}

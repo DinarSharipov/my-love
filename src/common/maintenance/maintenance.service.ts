@@ -3,6 +3,7 @@ import { FamilyEventDecisionStatus, FamilyInvitationStatus } from '@prisma/clien
 import { PrismaService } from '../../database/prisma.service';
 import { NotificationProducerService } from '../notifications/notification-producer.service';
 import { TaskRoutinesService } from '../../modules/tasks/task-routines.service';
+import { RecurringPaymentsService } from '../../modules/finance/recurring-payments.service';
 
 export interface CleanupResult {
   sessions: number;
@@ -29,6 +30,7 @@ export class MaintenanceService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationProducerService,
     private readonly taskRoutines: TaskRoutinesService,
+    private readonly recurringPayments: RecurringPaymentsService,
   ) {}
 
   async cleanupExpiredSecurityArtifacts(now = new Date()): Promise<CleanupResult> {
@@ -130,7 +132,52 @@ export class MaintenanceService {
     }
     delivered += await this.deliverDueFamilyEventReminders(now, 'primary');
     delivered += await this.deliverDueFamilyEventReminders(now, 'repeat');
+    delivered += await this.deliverDueRecurringPaymentReminders(now);
     return { delivered };
+  }
+
+  private async deliverDueRecurringPaymentReminders(now: Date): Promise<number> {
+    const forecasts = await this.prisma.recurringPaymentForecast.findMany({
+      where: {
+        reminderSentAt: null,
+        reminderAt: { lte: now },
+        recurringPayment: { active: true, archivedAt: null, wallet: { archivedAt: null } },
+      },
+      include: { recurringPayment: true },
+      take: 100,
+    });
+    let delivered = 0;
+    for (const forecast of forecasts) {
+      const claimed = await this.prisma.$transaction(async (tx) => {
+        const result = await tx.recurringPaymentForecast.updateMany({
+          where: {
+            id: forecast.id,
+            reminderSentAt: null,
+            recurringPayment: { active: true, archivedAt: null },
+          },
+          data: { reminderSentAt: now },
+        });
+        if (result.count !== 1) return false;
+        await Promise.all(
+          forecast.recurringPayment.reminderRecipientIds.map((userId) =>
+            this.notifications.notifyUserInTransaction(
+              tx,
+              {
+                userId,
+                familyId: forecast.recurringPayment.familyId,
+                type: 'RECURRING_PAYMENT_REMINDER',
+                title: forecast.recurringPayment.title,
+                body: `Регулярная ${forecast.recurringPayment.type === 'EXPENSE' ? 'трата' : 'операция'} запланирована на ${forecast.dueAt.toLocaleDateString('ru-RU')}.`,
+              },
+              now,
+            ),
+          ),
+        );
+        return true;
+      });
+      if (claimed) delivered += forecast.recurringPayment.reminderRecipientIds.length;
+    }
+    return delivered;
   }
 
   private async deliverDueFamilyEventReminders(
@@ -194,5 +241,9 @@ export class MaintenanceService {
 
   generateDueTaskRoutines(now = new Date()): Promise<{ generated: number }> {
     return this.taskRoutines.generateDue(now);
+  }
+
+  generateDueRecurringPaymentForecasts(now = new Date()): Promise<number> {
+    return this.recurringPayments.generateDueForecasts(now);
   }
 }

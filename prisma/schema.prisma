@@ -97,6 +97,16 @@ enum FinancialCategoryKind {
   EXPENSE
 }
 
+enum RecurringPaymentFrequency {
+  WEEKLY
+  MONTHLY
+}
+
+enum RecurringPaymentType {
+  INCOME
+  EXPENSE
+}
+
 model User {
   id                         String                     @id @default(uuid()) @db.Uuid
   firstName                  String                     @map("first_name") @db.VarChar(100)
@@ -152,6 +162,7 @@ model User {
   financialCommandResults    FinancialCommandResult[]
   createdFinancialCategories FinancialCategory[]        @relation("FinancialCategoryCreator")
   createdBudgets             Budget[]                   @relation("BudgetCreator")
+  createdRecurringPayments   RecurringPayment[]         @relation("RecurringPaymentCreator")
 
   @@index([lastName, firstName], map: "users_last_name_first_name_idx")
   @@map("users")
@@ -180,6 +191,7 @@ model Family {
   ledgerTransactions  LedgerTransaction[]
   financialCategories FinancialCategory[]
   budgets             Budget[]
+  recurringPayments   RecurringPayment[]
 
   @@map("families")
 }
@@ -583,22 +595,23 @@ model OutboxEvent {
 }
 
 model Wallet {
-  id          String           @id @default(uuid()) @db.Uuid
-  familyId    String           @map("family_id") @db.Uuid
-  ownerId     String?          @map("owner_id") @db.Uuid
-  createdById String           @map("created_by_id") @db.Uuid
-  type        WalletType
-  visibility  WalletVisibility
-  name        String           @db.VarChar(120)
-  currency    String           @db.Char(3)
-  version     Int              @default(1)
-  archivedAt  DateTime?        @map("archived_at")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
-  family      Family           @relation(fields: [familyId], references: [id], onDelete: Cascade)
-  owner       User?            @relation("WalletOwner", fields: [ownerId], references: [id], onDelete: Restrict)
-  createdBy   User             @relation("WalletCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  entries     LedgerEntry[]
+  id                String             @id @default(uuid()) @db.Uuid
+  familyId          String             @map("family_id") @db.Uuid
+  ownerId           String?            @map("owner_id") @db.Uuid
+  createdById       String             @map("created_by_id") @db.Uuid
+  type              WalletType
+  visibility        WalletVisibility
+  name              String             @db.VarChar(120)
+  currency          String             @db.Char(3)
+  version           Int                @default(1)
+  archivedAt        DateTime?          @map("archived_at")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  family            Family             @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  owner             User?              @relation("WalletOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  createdBy         User               @relation("WalletCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  entries           LedgerEntry[]
+  recurringPayments RecurringPayment[]
 
   @@index([familyId, archivedAt])
   @@index([ownerId, archivedAt])
@@ -630,19 +643,20 @@ model LedgerTransaction {
 }
 
 model FinancialCategory {
-  id           String                @id @default(uuid()) @db.Uuid
-  familyId     String                @map("family_id") @db.Uuid
-  createdById  String                @map("created_by_id") @db.Uuid
-  name         String                @db.VarChar(120)
-  kind         FinancialCategoryKind
-  version      Int                   @default(1)
-  archivedAt   DateTime?             @map("archived_at")
-  createdAt    DateTime              @default(now()) @map("created_at")
-  updatedAt    DateTime              @updatedAt @map("updated_at")
-  family       Family                @relation(fields: [familyId], references: [id], onDelete: Cascade)
-  createdBy    User                  @relation("FinancialCategoryCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  transactions LedgerTransaction[]
-  budgets      Budget[]
+  id                String                @id @default(uuid()) @db.Uuid
+  familyId          String                @map("family_id") @db.Uuid
+  createdById       String                @map("created_by_id") @db.Uuid
+  name              String                @db.VarChar(120)
+  kind              FinancialCategoryKind
+  version           Int                   @default(1)
+  archivedAt        DateTime?             @map("archived_at")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+  family            Family                @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdBy         User                  @relation("FinancialCategoryCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  transactions      LedgerTransaction[]
+  budgets           Budget[]
+  recurringPayments RecurringPayment[]
 
   @@index([familyId, kind, archivedAt])
   @@map("financial_categories")
@@ -665,6 +679,51 @@ model Budget {
   @@unique([categoryId, periodStart])
   @@index([familyId, periodStart])
   @@map("budgets")
+}
+
+model RecurringPayment {
+  id                    String                     @id @default(uuid()) @db.Uuid
+  familyId              String                     @map("family_id") @db.Uuid
+  walletId              String                     @map("wallet_id") @db.Uuid
+  categoryId            String?                    @map("category_id") @db.Uuid
+  createdById           String                     @map("created_by_id") @db.Uuid
+  type                  RecurringPaymentType
+  title                 String                     @db.VarChar(200)
+  note                  String?                    @db.VarChar(500)
+  amountMinor           BigInt                     @map("amount_minor")
+  frequency             RecurringPaymentFrequency
+  interval              Int                        @default(1)
+  nextDueAt             DateTime                   @map("next_due_at")
+  reminderOffsetMinutes Int?                       @map("reminder_offset_minutes")
+  reminderRecipientIds  String[]                   @default([]) @map("reminder_recipient_ids") @db.Uuid
+  active                Boolean                    @default(true)
+  version               Int                        @default(1)
+  archivedAt            DateTime?                  @map("archived_at")
+  createdAt             DateTime                   @default(now()) @map("created_at")
+  updatedAt             DateTime                   @updatedAt @map("updated_at")
+  family                Family                     @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  wallet                Wallet                     @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  category              FinancialCategory?         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  createdBy             User                       @relation("RecurringPaymentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  forecasts             RecurringPaymentForecast[]
+
+  @@index([familyId, active, nextDueAt])
+  @@index([walletId, active])
+  @@map("recurring_payments")
+}
+
+model RecurringPaymentForecast {
+  id                 String           @id @default(uuid()) @db.Uuid
+  recurringPaymentId String           @map("recurring_payment_id") @db.Uuid
+  dueAt              DateTime         @map("due_at")
+  reminderAt         DateTime         @map("reminder_at")
+  reminderSentAt     DateTime?        @map("reminder_sent_at")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  recurringPayment   RecurringPayment @relation(fields: [recurringPaymentId], references: [id], onDelete: Cascade)
+
+  @@unique([recurringPaymentId, dueAt])
+  @@index([reminderAt, reminderSentAt])
+  @@map("recurring_payment_forecasts")
 }
 
 model LedgerEntry {

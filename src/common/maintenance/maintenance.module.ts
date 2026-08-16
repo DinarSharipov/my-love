@@ -5,9 +5,10 @@ import { MaintenanceWorker } from './maintenance.worker';
 import { OutboxModule } from '../outbox/outbox.module';
 import { NotificationProducerModule } from '../notifications/notification-producer.module';
 import { TasksModule } from '../../modules/tasks/tasks.module';
+import { FinanceModule } from '../../modules/finance/finance.module';
 
 @Module({
-  imports: [DatabaseModule, OutboxModule, NotificationProducerModule, TasksModule],
+  imports: [DatabaseModule, OutboxModule, NotificationProducerModule, TasksModule, FinanceModule],
   providers: [MaintenanceService, MaintenanceWorker],
   exports: [MaintenanceService],
 })
