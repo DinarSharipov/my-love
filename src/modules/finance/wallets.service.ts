@@ -111,6 +111,13 @@ export class WalletsService {
   async archive(userId: string, walletId: string, expectedVersion?: number): Promise<void> {
     const context = await this.membership.requireMembership(userId);
     const wallet = await this.requireManageable(userId, walletId, context.familyId, context.role);
+    const activeGoal = await this.prisma.financialGoal.findFirst({
+      where: { walletId: wallet.id, archivedAt: null },
+      select: { id: true },
+    });
+    if (activeGoal) {
+      throw new ConflictException('Archive the linked financial goal before its envelope wallet');
+    }
     await this.prisma.$transaction(async (tx) => {
       const result = await tx.wallet.updateMany({
         where: {

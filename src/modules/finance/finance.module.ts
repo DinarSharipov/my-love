@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { FamilyMembersModule } from '../family-members/family-members.module';
+import { NotificationProducerModule } from '../../common/notifications/notification-producer.module';
 import { WalletsController } from './wallets.controller';
 import { WalletsService } from './wallets.service';
 import { LedgerCommandsController } from './ledger-commands.controller';
@@ -13,9 +14,11 @@ import { RecurringPaymentsController } from './recurring-payments.controller';
 import { RecurringPaymentsService } from './recurring-payments.service';
 import { FinancialSummaryController } from './financial-summary.controller';
 import { FinancialSummaryService } from './financial-summary.service';
+import { FinancialGoalsController } from './financial-goals.controller';
+import { FinancialGoalsService } from './financial-goals.service';
 
 @Module({
-  imports: [FamilyMembersModule],
+  imports: [FamilyMembersModule, NotificationProducerModule],
   controllers: [
     WalletsController,
     LedgerCommandsController,
@@ -23,6 +26,7 @@ import { FinancialSummaryService } from './financial-summary.service';
     BudgetsController,
     RecurringPaymentsController,
     FinancialSummaryController,
+    FinancialGoalsController,
   ],
   providers: [
     WalletsService,
@@ -32,6 +36,7 @@ import { FinancialSummaryService } from './financial-summary.service';
     BudgetsService,
     RecurringPaymentsService,
     FinancialSummaryService,
+    FinancialGoalsService,
   ],
   exports: [WalletsService, RecurringPaymentsService],
 })

@@ -108,61 +108,63 @@ enum RecurringPaymentType {
 }
 
 model User {
-  id                         String                     @id @default(uuid()) @db.Uuid
-  firstName                  String                     @map("first_name") @db.VarChar(100)
-  lastName                   String                     @map("last_name") @db.VarChar(100)
-  email                      String                     @unique @db.VarChar(320)
-  passwordHash               String?                    @map("password_hash") @db.VarChar(255)
+  id                         String                      @id @default(uuid()) @db.Uuid
+  firstName                  String                      @map("first_name") @db.VarChar(100)
+  lastName                   String                      @map("last_name") @db.VarChar(100)
+  email                      String                      @unique @db.VarChar(320)
+  passwordHash               String?                     @map("password_hash") @db.VarChar(255)
   gender                     Gender
-  description                String?                    @db.Text
-  birthDate                  DateTime                   @map("birth_date") @db.Date
-  phone                      String?                    @db.VarChar(32)
-  locale                     String                     @default("ru-RU") @db.VarChar(35)
-  timeZone                   String                     @default("Europe/Moscow") @map("time_zone") @db.VarChar(100)
-  version                    Int                        @default(1)
-  isActive                   Boolean                    @default(true) @map("is_active")
-  deletionRequestedAt        DateTime?                  @map("deletion_requested_at")
-  deletionScheduledAt        DateTime?                  @map("deletion_scheduled_at")
-  retentionAnonymizedAt      DateTime?                  @map("retention_anonymized_at")
-  createdAt                  DateTime                   @default(now()) @map("created_at")
-  updatedAt                  DateTime                   @updatedAt @map("updated_at")
+  description                String?                     @db.Text
+  birthDate                  DateTime                    @map("birth_date") @db.Date
+  phone                      String?                     @db.VarChar(32)
+  locale                     String                      @default("ru-RU") @db.VarChar(35)
+  timeZone                   String                      @default("Europe/Moscow") @map("time_zone") @db.VarChar(100)
+  version                    Int                         @default(1)
+  isActive                   Boolean                     @default(true) @map("is_active")
+  deletionRequestedAt        DateTime?                   @map("deletion_requested_at")
+  deletionScheduledAt        DateTime?                   @map("deletion_scheduled_at")
+  retentionAnonymizedAt      DateTime?                   @map("retention_anonymized_at")
+  createdAt                  DateTime                    @default(now()) @map("created_at")
+  updatedAt                  DateTime                    @updatedAt @map("updated_at")
   sessions                   AuthSession[]
   familyMember               FamilyMember?
-  sentFamilyInvitations      FamilyInvitation[]         @relation("FamilyInvitationSender")
-  receivedFamilyInvitations  FamilyInvitation[]         @relation("FamilyInvitationRecipient")
-  sentPrivateInvitations     PrivateFamilyInvitation[]  @relation("PrivateFamilyInvitationSender")
-  acceptedPrivateInvitations PrivateFamilyInvitation[]  @relation("PrivateFamilyInvitationAcceptor")
-  proposedFamilyEvents       FamilyEvent[]              @relation("FamilyEventProposer")
-  respondedFamilyEvents      FamilyEvent[]              @relation("FamilyEventResponder")
-  deletedFamilyEvents        FamilyEvent[]              @relation("FamilyEventDeleter")
-  createdFirstDates          FirstDate[]                @relation("FirstDateCreator")
+  sentFamilyInvitations      FamilyInvitation[]          @relation("FamilyInvitationSender")
+  receivedFamilyInvitations  FamilyInvitation[]          @relation("FamilyInvitationRecipient")
+  sentPrivateInvitations     PrivateFamilyInvitation[]   @relation("PrivateFamilyInvitationSender")
+  acceptedPrivateInvitations PrivateFamilyInvitation[]   @relation("PrivateFamilyInvitationAcceptor")
+  proposedFamilyEvents       FamilyEvent[]               @relation("FamilyEventProposer")
+  respondedFamilyEvents      FamilyEvent[]               @relation("FamilyEventResponder")
+  deletedFamilyEvents        FamilyEvent[]               @relation("FamilyEventDeleter")
+  createdFirstDates          FirstDate[]                 @relation("FirstDateCreator")
   idempotencyRecords         IdempotencyRecord[]
   passwordResetTokens        PasswordResetToken[]
   emailChangeTokens          EmailChangeToken[]
   accountDeletionTokens      AccountDeletionToken[]
-  requestedDissolutions      FamilyDissolutionRequest[] @relation("DissolutionRequester")
-  confirmedDissolutions      FamilyDissolutionRequest[] @relation("DissolutionConfirmer")
-  auditEvents                AuditEvent[]               @relation("AuditActor")
-  createdTasks               Task[]                     @relation("TaskCreator")
-  assignedTasks              Task[]                     @relation("TaskAssignee")
-  completedTasks             Task[]                     @relation("TaskCompleter")
-  createdTaskRoutines        TaskRoutine[]              @relation("TaskRoutineCreator")
-  assignedTaskRoutines       TaskRoutine[]              @relation("TaskRoutineAssignee")
+  requestedDissolutions      FamilyDissolutionRequest[]  @relation("DissolutionRequester")
+  confirmedDissolutions      FamilyDissolutionRequest[]  @relation("DissolutionConfirmer")
+  auditEvents                AuditEvent[]                @relation("AuditActor")
+  createdTasks               Task[]                      @relation("TaskCreator")
+  assignedTasks              Task[]                      @relation("TaskAssignee")
+  completedTasks             Task[]                      @relation("TaskCompleter")
+  createdTaskRoutines        TaskRoutine[]               @relation("TaskRoutineCreator")
+  assignedTaskRoutines       TaskRoutine[]               @relation("TaskRoutineAssignee")
   shoppingLists              ShoppingList[]
-  addedShoppingItems         ShoppingItem[]             @relation("ShoppingItemAdder")
-  checkedShoppingItems       ShoppingItem[]             @relation("ShoppingItemChecker")
+  addedShoppingItems         ShoppingItem[]              @relation("ShoppingItemAdder")
+  checkedShoppingItems       ShoppingItem[]              @relation("ShoppingItemChecker")
   notifications              Notification[]
   reminders                  TaskReminder[]
   notificationPreference     NotificationPreference?
   telegramConnection         TelegramConnection?
   telegramLinkTokens         TelegramLinkToken[]
-  ownedWallets               Wallet[]                   @relation("WalletOwner")
-  createdWallets             Wallet[]                   @relation("WalletCreator")
-  createdLedgerTransactions  LedgerTransaction[]        @relation("LedgerTransactionCreator")
+  ownedWallets               Wallet[]                    @relation("WalletOwner")
+  createdWallets             Wallet[]                    @relation("WalletCreator")
+  createdLedgerTransactions  LedgerTransaction[]         @relation("LedgerTransactionCreator")
   financialCommandResults    FinancialCommandResult[]
-  createdFinancialCategories FinancialCategory[]        @relation("FinancialCategoryCreator")
-  createdBudgets             Budget[]                   @relation("BudgetCreator")
-  createdRecurringPayments   RecurringPayment[]         @relation("RecurringPaymentCreator")
+  createdFinancialCategories FinancialCategory[]         @relation("FinancialCategoryCreator")
+  createdBudgets             Budget[]                    @relation("BudgetCreator")
+  createdRecurringPayments   RecurringPayment[]          @relation("RecurringPaymentCreator")
+  createdFinancialGoals      FinancialGoal[]             @relation("FinancialGoalCreator")
+  goalContributions          FinancialGoalContribution[] @relation("FinancialGoalContributionCreator")
 
   @@index([lastName, firstName], map: "users_last_name_first_name_idx")
   @@map("users")
@@ -192,6 +194,7 @@ model Family {
   financialCategories FinancialCategory[]
   budgets             Budget[]
   recurringPayments   RecurringPayment[]
+  financialGoals      FinancialGoal[]
 
   @@map("families")
 }
@@ -612,6 +615,7 @@ model Wallet {
   createdBy         User               @relation("WalletCreator", fields: [createdById], references: [id], onDelete: Restrict)
   entries           LedgerEntry[]
   recurringPayments RecurringPayment[]
+  financialGoal     FinancialGoal?
 
   @@index([familyId, archivedAt])
   @@index([ownerId, archivedAt])
@@ -619,23 +623,24 @@ model Wallet {
 }
 
 model LedgerTransaction {
-  id          String                  @id @default(uuid()) @db.Uuid
-  familyId    String                  @map("family_id") @db.Uuid
-  createdById String                  @map("created_by_id") @db.Uuid
-  type        LedgerTransactionType
-  currency    String                  @db.Char(3)
-  occurredAt  DateTime                @map("occurred_at")
-  note        String?                 @db.VarChar(500)
-  reversesId  String?                 @unique @map("reverses_id") @db.Uuid
-  categoryId  String?                 @map("category_id") @db.Uuid
-  createdAt   DateTime                @default(now()) @map("created_at")
-  family      Family                  @relation(fields: [familyId], references: [id], onDelete: Restrict)
-  createdBy   User                    @relation("LedgerTransactionCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  reverses    LedgerTransaction?      @relation("LedgerReversal", fields: [reversesId], references: [id], onDelete: Restrict)
-  reversedBy  LedgerTransaction?      @relation("LedgerReversal")
-  category    FinancialCategory?      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  entries     LedgerEntry[]
-  command     FinancialCommandResult?
+  id               String                     @id @default(uuid()) @db.Uuid
+  familyId         String                     @map("family_id") @db.Uuid
+  createdById      String                     @map("created_by_id") @db.Uuid
+  type             LedgerTransactionType
+  currency         String                     @db.Char(3)
+  occurredAt       DateTime                   @map("occurred_at")
+  note             String?                    @db.VarChar(500)
+  reversesId       String?                    @unique @map("reverses_id") @db.Uuid
+  categoryId       String?                    @map("category_id") @db.Uuid
+  createdAt        DateTime                   @default(now()) @map("created_at")
+  family           Family                     @relation(fields: [familyId], references: [id], onDelete: Restrict)
+  createdBy        User                       @relation("LedgerTransactionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  reverses         LedgerTransaction?         @relation("LedgerReversal", fields: [reversesId], references: [id], onDelete: Restrict)
+  reversedBy       LedgerTransaction?         @relation("LedgerReversal")
+  category         FinancialCategory?         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  entries          LedgerEntry[]
+  command          FinancialCommandResult?
+  goalContribution FinancialGoalContribution?
 
   @@index([familyId, occurredAt, id])
   @@index([categoryId, occurredAt])
@@ -724,6 +729,42 @@ model RecurringPaymentForecast {
   @@unique([recurringPaymentId, dueAt])
   @@index([reminderAt, reminderSentAt])
   @@map("recurring_payment_forecasts")
+}
+
+model FinancialGoal {
+  id                String                      @id @default(uuid()) @db.Uuid
+  familyId          String                      @map("family_id") @db.Uuid
+  walletId          String                      @unique @map("wallet_id") @db.Uuid
+  createdById       String                      @map("created_by_id") @db.Uuid
+  title             String                      @db.VarChar(200)
+  targetAmountMinor BigInt                      @map("target_amount_minor")
+  targetDate        DateTime?                   @map("target_date") @db.Date
+  achievedAt        DateTime?                   @map("achieved_at")
+  version           Int                         @default(1)
+  archivedAt        DateTime?                   @map("archived_at")
+  createdAt         DateTime                    @default(now()) @map("created_at")
+  updatedAt         DateTime                    @updatedAt @map("updated_at")
+  family            Family                      @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  wallet            Wallet                      @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  createdBy         User                        @relation("FinancialGoalCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  contributions     FinancialGoalContribution[]
+
+  @@index([familyId, archivedAt, createdAt])
+  @@map("financial_goals")
+}
+
+model FinancialGoalContribution {
+  id            String            @id @default(uuid()) @db.Uuid
+  goalId        String            @map("goal_id") @db.Uuid
+  transactionId String            @unique @map("transaction_id") @db.Uuid
+  createdById   String            @map("created_by_id") @db.Uuid
+  createdAt     DateTime          @default(now()) @map("created_at")
+  goal          FinancialGoal     @relation(fields: [goalId], references: [id], onDelete: Restrict)
+  transaction   LedgerTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  createdBy     User              @relation("FinancialGoalContributionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([goalId, createdAt])
+  @@map("financial_goal_contributions")
 }
 
 model LedgerEntry {

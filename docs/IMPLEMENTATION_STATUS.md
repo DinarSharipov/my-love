@@ -34,10 +34,12 @@ work сверять записи ниже с фактическими schema/con
   Telegram/in-app reminders; они не создают ledger запись автоматически.
 - Последний завершённый финансовый срез: visibility-safe monthly financial summary с
   фактическими доходами/расходами по категориям и остатком budget limit.
-- Следующий срез: financial goals/envelopes поверх существующих wallet, ledger, budgets
-  и recurring payment прогнозов.
+- Последний завершённый финансовый срез: financial goals/envelopes — выделенный wallet
+  на цель, ledger-backed progress и идемпотентные пополнения.
+- Следующий срез: financial analytics — cash flow по месяцам, обязательные платежи,
+  прогноз остатка и сводные показатели семьи.
 - Приоритет реализации: сначала завершать основной пользовательский функционал
-  (ближайший backend-срез — financial summary и фактические budget totals). Production
+  (ближайший backend-срез — financial analytics и прогнозы). Production
   SMTP, security/privacy hardening, reliability-настройки и расширенное E2E/CI-покрытие
   сознательно отложены в финальный этап стабилизации перед релизной готовностью, если
   только не станут блокером для уже выбранной продуктовой функции.
@@ -220,7 +222,7 @@ work сверять записи ниже с фактическими schema/con
 ## Миграции
 
 Применяются только новыми файлами; текущая последняя миграция:
-`20260816030000_add_recurring_payments`. Всего 29 миграций.
+`20260816040000_add_financial_goals`. Всего 30 миграций.
 
 Financial foundation добавляет personal/family wallets, append-only ledger transactions/
 entries, reversal link и `FinancialCommandResult`. Deferred PostgreSQL triggers требуют
@@ -240,12 +242,22 @@ Financial summary не хранит производные balances: `GET /api/v
 wallet entries. Итоги категории сгруппированы по currency; limit и остаток budget считаются
 в default currency семьи, поэтому FX conversion намеренно отсутствует.
 
+Миграция `20260816040000_add_financial_goals` добавляет `FinancialGoal` и привязку
+пополнения к immutable transfer. Каждая цель создаёт отдельный envelope wallet с теми же
+type/visibility правилами, что и обычный wallet. Прогресс — сумма ledger entries этого
+wallet; mutable balance не хранится. `POST .../contributions` атомарно создаёт balanced
+transfer, contribution и command idempotency result. Private source wallet нельзя
+перевести в family envelope, чтобы не раскрывать личную сумму через shared goal. При первом
+достижении target автор получает `FINANCIAL_GOAL_ACHIEVED` через unified in-app/Telegram
+producer. Активный goal защищает свой envelope от generic wallet archive; после archive
+цели сам wallet остаётся доступным для истории и дальнейшего ручного управления.
+
 ## Проверки на момент сверки
 
 - `npm run lint` — passed.
-- `npm test -- --runInBand` — 22 suites / 64 tests passed.
+- `npm test -- --runInBand` — 28 suites / 80 tests passed.
 - `npm run build` — passed.
-- `npm run test:e2e:verify` — 10 scenarios passed на чистой БД; все 26 миграций
+- `npm run test:e2e:verify` — 10 scenarios passed на чистой БД; все 30 миграций
   последовательно применились.
 - Production Docker image собран; оба entrypoint (`dist/main.js` и
   `dist/telegram-gateway/main.js`) присутствуют.
@@ -340,6 +352,14 @@ wallet entries. Итоги категории сгруппированы по cu
   `budget.actualMinor` и `budget.remainingMinor` — строки. Отображать `actual` раздельно
   по currency; budget remainder осмыслен только для `defaultCurrency` семьи, FX conversion
   backend намеренно не делает.
+- Frontend follow-up (выполняет отдельный frontend-агент): добавить goals/envelopes через
+  `POST/GET/PATCH/DELETE /families/me/financial-goals` и пополнение
+  `POST /families/me/financial-goals/:id/contributions`. Создание цели создаёт выделенный
+  wallet: `type`/`visibility` имеют те же значения, что у wallet; `targetAmountMinor` и
+  contribution `amountMinor` — строки, `targetDate` — optional `YYYY-MM-DD`. Для PATCH/DELETE
+  передавать `If-Match` из `version`; для каждого пополнения — новый `Idempotency-Key`.
+  Показывать `currentAmountMinor`/`remainingAmountMinor` как строки. В текущем frontend RTK
+  Query этих endpoint ещё нет; существующие contracts wallets/ledger не изменены.
 
 ## Журнал backend-срезов
 
@@ -395,5 +415,6 @@ wallet entries. Итоги категории сгруппированы по cu
 | 2026-08-16 | Budget categories                      | миграция `20260816020000_add_budget_categories`; family income/expense categories, optional category в income/expense/reversal ledger, CRUD месячных expense budget limits с optimistic locking и audit     | generate, 25 unit suites / 74 tests, lint, чистый 28-migration E2E, build, diff-check   | recurring payment forecast/reminders                              |
 | 2026-08-16 | Recurring payments                     | миграция `20260816030000_add_recurring_payments`; wallet/category-scoped WEEKLY/MONTHLY forecast, CRUD/visibility/concurrency, durable claim и unified in-app/Telegram reminders; без auto-posting в ledger | generate, lint, 26 unit suites / 76 tests, чистый 29-migration E2E, build, diff-check   | financial summary и фактические budget totals                     |
 | 2026-08-16 | Financial summary                      | `GET /families/me/finance/summary`; monthly category totals из visibility-safe immutable ledger, budget actual/remaining в default currency и отдельные totals для каждой currency без FX              | lint, targeted unit, build, diff-check                                                   | financial goals/envelopes                                         |
+| 2026-08-17 | Financial goals/envelopes              | миграция `20260816040000_add_financial_goals`; dedicated envelope wallet, ledger-derived progress, idempotent contribution transfer и achievement notification                                      | generate, lint, 28 unit suites / 80 tests, чистый 30-migration E2E, build, diff-check   | financial analytics                                               |
 | 2026-08-16 | Notification channel policy            | domain notifications только in-app/Telegram; email только security/account recovery; production bot readiness checklist                                                                                     | code/config audit                                                                       | production gateway wiring после получения hostname/token/secrets  |
 | 2026-08-16 | Приоритизация roadmap                  | основной пользовательский функционал впереди; SMTP, hardening и расширенные E2E/CI отложены до финальной стабилизации                                                                                       | status review                                                                           | idempotent financial ledger commands                              |
