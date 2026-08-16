@@ -27,6 +27,7 @@ work сверять записи ниже с фактическими schema/con
 - Текущий срез: транзакционные idempotent income/expense/transfer ledger-команды.
 - Последний инфраструктурный hardening-срез: единый transactional notification producer
   для всех текущих domain events и due reminders.
+- Текущий срез: настраиваемые Telegram-напоминания для family events.
 
 ## Реализовано
 
@@ -178,11 +179,20 @@ work сверять записи ниже с фактическими schema/con
 - First date: create/read/update/delete, одна запись на семью, ownership и concurrency.
 - Family events: CRUD, date-range pagination, partner confirm/reject, timezone statuses,
   re-proposal after material update, creator soft delete и concurrency.
+- Family event reminders: create/update DTO получили additive поля
+  `reminderOffsetMinutes`, `reminderRecipientIds` и `repeatReminderAt`. Первый момент
+  доставки вычисляется и хранится сервером; оба момента валидируются как будущие и до
+  начала события, а получатели — как уникальные участники текущей семьи. Изменение
+  времени или настроек сбрасывает delivery claim. Worker каждую минуту атомарно claim-ит
+  только подтверждённые, не удалённые события и передаёт каждому получателю
+  `FAMILY_EVENT_REMINDER` в единственный `NotificationProducerService` (in-app + Telegram
+  outbox, preferences и quiet hours). Почасовой housekeeping и минутный poll reminder-ов
+  разделены через `CLEANUP_POLL_INTERVAL_MS` / `REMINDER_POLL_INTERVAL_MS`.
 
 ## Миграции
 
 Применяются только новыми файлами; текущая последняя миграция:
-`20260816000000_add_financial_foundation`. Всего 26 миграций.
+`20260816010000_add_family_event_reminders`. Всего 27 миграций.
 
 Financial foundation добавляет personal/family wallets, append-only ledger transactions/
 entries, reversal link и `FinancialCommandResult`. Deferred PostgreSQL triggers требуют
@@ -252,6 +262,10 @@ entries, reversal link и `FinancialCommandResult`. Deferred PostgreSQL triggers
   (`currentPassword`), показывать `scheduledFor`, очищать локальный token после 202;
   добавить публичную страницу `/cancel-account-deletion` для
   `POST /api/v1/auth/account-deletion/cancel` (`token`) с переходом на login после 204.
+- Frontend follow-up (выполняет отдельный frontend-агент): в форме создания/редактирования
+  family event добавить optional `reminderOffsetMinutes` (минуты до события),
+  `reminderRecipientIds` (массив UUID участников семьи) и `repeatReminderAt` (ISO datetime).
+  Для очистки настройки PATCH передаёт `null` для дат/offset и `[]` для recipients.
 
 ## Журнал backend-срезов
 
@@ -268,6 +282,7 @@ entries, reversal link и `FinancialCommandResult`. Deferred PostgreSQL triggers
 | 2026-08-15 | Password reset          | request/confirm, hash token, encrypted email outbox payload, session revocation                                                                          | migration, 24 unit, 6 e2e, build               | email confirmation/account lifecycle             |
 | 2026-08-15 | Local SMTP              | Mailpit service, Nodemailer SMTP adapter, Compose SMTP wiring и inbox verification                                                                       | lint, unit, e2e, Docker build, SMTP smoke test | production SMTP credentials / email confirmation |
 | 2026-08-16 | Unified notifications   | due task reminders переведены на `NotificationProducerService`; inbox и Telegram outbox создаются единообразно и атомарно с claim reminder              | lint, 22 unit suites / 64 tests, build         | financial ledger commands                         |
+| 2026-08-16 | Family event reminders | миграция `20260816010000_add_family_event_reminders`; first offset, family recipients и exact repeat reminder, minute delivery worker через unified producer | generate, lint, 22 unit suites / 66 tests, build, diff-check | frontend event reminder controls |
 | 2026-08-15 | Email change            | re-auth request, one-time hash token, encrypted confirmation email, email update и revocation всех sessions                                              | generate, lint, 24 unit, 7 e2e, build          | account lifecycle / cleanup jobs                 |
 | 2026-08-15 | Account deactivation    | re-auth request, configurable grace period, encrypted recovery link, session revocation, cancellation исходящих invitations и одноразовое восстановление | generate, lint, 24 unit, 8 e2e, build          | cleanup jobs / retention policy / account export |
 | 2026-08-15 | Cleanup worker          | периодическая очистка истёкших sessions/tokens и перевод просроченных invitations в `EXPIRED` | lint, 25 unit, 8 e2e, build | retention policy / account export |

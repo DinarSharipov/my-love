@@ -53,6 +53,12 @@ describe('FamilyEventsService', () => {
     description: 'В центре',
     scheduledAt: new Date('2099-09-20T16:00:00.000Z'),
     location: 'Москва',
+    reminderOffsetMinutes: null,
+    reminderRecipientIds: [],
+    reminderAt: null,
+    reminderSentAt: null,
+    repeatReminderAt: null,
+    repeatReminderSentAt: null,
     status: FamilyEventDecisionStatus.CONFIRMED,
     respondedAt: new Date('2026-08-15T10:00:00.000Z'),
     deletedAt: null,
@@ -80,6 +86,75 @@ describe('FamilyEventsService', () => {
     expect(count).toHaveBeenCalledWith({
       where: { familyId, role: FamilyMemberRole.PARTNER },
     });
+  });
+
+  it('stores validated first and repeat reminders for family members', async () => {
+    const scheduledAt = '2099-09-20T16:00:00.000Z';
+    const create = jest.fn<Promise<unknown>, [unknown]>().mockResolvedValue({
+      ...event,
+      scheduledAt: new Date(scheduledAt),
+      reminderOffsetMinutes: 60,
+      reminderRecipientIds: [creatorId, partnerId],
+      reminderAt: new Date('2099-09-20T15:00:00.000Z'),
+      repeatReminderAt: new Date('2099-09-20T15:30:00.000Z'),
+      proposedBy: creator,
+      respondedBy: null,
+    });
+    const prisma = {
+      familyMember: {
+        count: jest.fn().mockResolvedValue(2),
+        findMany: jest.fn().mockResolvedValue([{ userId: creatorId }, { userId: partnerId }]),
+      },
+      familyEvent: { create },
+    };
+    const service = new FamilyEventsService(
+      prisma as unknown as PrismaService,
+      membership,
+      notifications as never,
+    );
+
+    await service.create(creatorId, {
+      name: 'Ужин',
+      scheduledAt,
+      location: 'Москва',
+      reminderOffsetMinutes: 60,
+      reminderRecipientIds: [creatorId, partnerId],
+      repeatReminderAt: '2099-09-20T15:30:00.000Z',
+    });
+
+    const createArg = create.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(createArg.data).toEqual(
+      expect.objectContaining({
+        reminderOffsetMinutes: 60,
+        reminderRecipientIds: [creatorId, partnerId],
+        reminderAt: new Date('2099-09-20T15:00:00.000Z'),
+        repeatReminderAt: new Date('2099-09-20T15:30:00.000Z'),
+      }),
+    );
+  });
+
+  it('rejects reminder recipients outside the family', async () => {
+    const prisma = {
+      familyMember: {
+        count: jest.fn().mockResolvedValue(2),
+        findMany: jest.fn().mockResolvedValue([{ userId: creatorId }]),
+      },
+    };
+    const service = new FamilyEventsService(
+      prisma as unknown as PrismaService,
+      membership,
+      notifications as never,
+    );
+
+    await expect(
+      service.create(creatorId, {
+        name: 'Ужин',
+        scheduledAt: '2099-09-20T16:00:00.000Z',
+        location: 'Москва',
+        reminderOffsetMinutes: 60,
+        reminderRecipientIds: [creatorId, partnerId],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('lets the creator update and re-propose an answered event', async () => {

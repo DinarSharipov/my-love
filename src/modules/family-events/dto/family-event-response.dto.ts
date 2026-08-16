@@ -20,6 +20,10 @@ export class FamilyEventResponseDto {
   @ApiPropertyOptional({ type: String, nullable: true }) description: string | null;
   @ApiProperty({ format: 'date-time' }) scheduledAt: Date;
   @ApiProperty() location: string;
+  @ApiPropertyOptional({ minimum: 1, nullable: true }) reminderOffsetMinutes: number | null;
+  @ApiProperty({ type: [String], format: 'uuid' }) reminderRecipientIds: string[];
+  @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true })
+  repeatReminderAt: Date | null;
   @ApiProperty({ enum: FamilyEventStatus }) status: FamilyEventStatus;
   @ApiProperty({ type: UserResponseDto }) proposedBy: UserResponseDto;
   @ApiPropertyOptional({ type: UserResponseDto, nullable: true })
@@ -42,6 +46,9 @@ export class FamilyEventResponseDto {
       description: event.description,
       scheduledAt: event.scheduledAt,
       location: event.location,
+      reminderOffsetMinutes: event.reminderOffsetMinutes,
+      reminderRecipientIds: event.reminderRecipientIds,
+      repeatReminderAt: event.repeatReminderAt,
       status: resolveFamilyEventStatus(event.status, event.scheduledAt, now, timeZone),
       proposedBy: UserResponseDto.fromEntity(event.proposedBy),
       respondedBy: event.respondedBy ? UserResponseDto.fromEntity(event.respondedBy) : null,

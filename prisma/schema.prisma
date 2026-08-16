@@ -396,6 +396,12 @@ model FamilyEvent {
   description   String?                   @db.Text
   scheduledAt   DateTime                  @map("scheduled_at")
   location      String                    @db.VarChar(500)
+  reminderOffsetMinutes Int?              @map("reminder_offset_minutes")
+  reminderRecipientIds   String[]         @default([]) @map("reminder_recipient_ids") @db.Uuid
+  reminderAt             DateTime?        @map("reminder_at")
+  reminderSentAt         DateTime?        @map("reminder_sent_at")
+  repeatReminderAt       DateTime?        @map("repeat_reminder_at")
+  repeatReminderSentAt   DateTime?        @map("repeat_reminder_sent_at")
   status        FamilyEventDecisionStatus @default(PROPOSED)
   respondedAt   DateTime?                 @map("responded_at")
   deletedAt     DateTime?                 @map("deleted_at")
@@ -410,6 +416,8 @@ model FamilyEvent {
   @@index([familyId, scheduledAt])
   @@index([proposedById])
   @@index([familyId, deletedAt, scheduledAt])
+  @@index([reminderAt, reminderSentAt])
+  @@index([repeatReminderAt, repeatReminderSentAt])
   @@map("family_events")
 }
 

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { FamilyInvitationStatus } from '@prisma/client';
+import { FamilyEventDecisionStatus, FamilyInvitationStatus } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificationProducerService } from '../notifications/notification-producer.service';
 import { TaskRoutinesService } from '../../modules/tasks/task-routines.service';
@@ -128,7 +128,68 @@ export class MaintenanceService {
       });
       if (result) delivered += 1;
     }
+    delivered += await this.deliverDueFamilyEventReminders(now, 'primary');
+    delivered += await this.deliverDueFamilyEventReminders(now, 'repeat');
     return { delivered };
+  }
+
+  private async deliverDueFamilyEventReminders(
+    now: Date,
+    kind: 'primary' | 'repeat',
+  ): Promise<number> {
+    const reminderAtField = kind === 'primary' ? 'reminderAt' : 'repeatReminderAt';
+    const sentAtField = kind === 'primary' ? 'reminderSentAt' : 'repeatReminderSentAt';
+    const events = await this.prisma.familyEvent.findMany({
+      where: {
+        deletedAt: null,
+        status: FamilyEventDecisionStatus.CONFIRMED,
+        scheduledAt: { gt: now },
+        [reminderAtField]: { lte: now },
+        [sentAtField]: null,
+      },
+      select: {
+        id: true,
+        familyId: true,
+        name: true,
+        reminderRecipientIds: true,
+      },
+      take: 100,
+    });
+    let delivered = 0;
+    for (const event of events) {
+      const claimed = await this.prisma.$transaction(async (tx) => {
+        const result = await tx.familyEvent.updateMany({
+          where: {
+            id: event.id,
+            deletedAt: null,
+            status: FamilyEventDecisionStatus.CONFIRMED,
+            scheduledAt: { gt: now },
+            [reminderAtField]: { lte: now },
+            [sentAtField]: null,
+          },
+          data: { [sentAtField]: now },
+        });
+        if (result.count !== 1) return false;
+        await Promise.all(
+          event.reminderRecipientIds.map((userId) =>
+            this.notifications.notifyUserInTransaction(
+              tx,
+              {
+                userId,
+                familyId: event.familyId,
+                type: 'FAMILY_EVENT_REMINDER',
+                title: event.name,
+                body: 'Напоминание о семейном событии',
+              },
+              now,
+            ),
+          ),
+        );
+        return true;
+      });
+      if (claimed) delivered += event.reminderRecipientIds.length;
+    }
+    return delivered;
   }
 
   generateDueTaskRoutines(now = new Date()): Promise<{ generated: number }> {

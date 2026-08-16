@@ -39,6 +39,7 @@ export class FamilyEventsService {
     if (partners !== 2) {
       throw new ConflictException('A family must have exactly two partners to plan an event');
     }
+    const reminders = await this.resolveReminderSettings(familyId, dto, scheduledAt);
 
     const event = await this.prisma.familyEvent.create({
       data: {
@@ -48,6 +49,7 @@ export class FamilyEventsService {
         description: dto.description || null,
         scheduledAt,
         location: dto.location,
+        ...reminders,
       },
       include: familyEventInclude,
     });
@@ -123,7 +125,10 @@ export class FamilyEventsService {
       dto.name === undefined &&
       dto.description === undefined &&
       dto.scheduledAt === undefined &&
-      dto.location === undefined
+      dto.location === undefined &&
+      dto.reminderOffsetMinutes === undefined &&
+      dto.reminderRecipientIds === undefined &&
+      dto.repeatReminderAt === undefined
     ) {
       throw new BadRequestException('At least one field must be provided');
     }
@@ -141,6 +146,14 @@ export class FamilyEventsService {
       if (scheduledAt.getTime() <= Date.now()) {
         throw new BadRequestException('Event date must be in the future');
       }
+      const reminderChanged =
+        dto.scheduledAt !== undefined ||
+        dto.reminderOffsetMinutes !== undefined ||
+        dto.reminderRecipientIds !== undefined ||
+        dto.repeatReminderAt !== undefined;
+      const reminders = reminderChanged
+        ? await this.resolveReminderSettings(familyId, dto, scheduledAt, current)
+        : undefined;
 
       const result = await transaction.familyEvent.updateMany({
         where: {
@@ -159,6 +172,8 @@ export class FamilyEventsService {
                 : null,
           scheduledAt: dto.scheduledAt ? scheduledAt : undefined,
           location: dto.location,
+          ...(reminders ?? {}),
+          ...(reminderChanged ? { reminderSentAt: null, repeatReminderSentAt: null } : {}),
           status: FamilyEventDecisionStatus.PROPOSED,
           respondedById: null,
           respondedAt: null,
@@ -272,5 +287,76 @@ export class FamilyEventsService {
       body: updated.name,
     });
     return FamilyEventResponseDto.fromEntity(updated, timeZone, respondedAt);
+  }
+
+  private async resolveReminderSettings(
+    familyId: string,
+    dto: CreateFamilyEventDto | UpdateFamilyEventDto,
+    scheduledAt: Date,
+    current?: {
+      reminderOffsetMinutes: number | null;
+      reminderRecipientIds: string[];
+      repeatReminderAt: Date | null;
+    },
+  ): Promise<{
+    reminderOffsetMinutes: number | null;
+    reminderRecipientIds: string[];
+    reminderAt: Date | null;
+    repeatReminderAt: Date | null;
+  }> {
+    const reminderOffsetMinutes =
+      dto.reminderOffsetMinutes === undefined
+        ? (current?.reminderOffsetMinutes ?? null)
+        : dto.reminderOffsetMinutes;
+    const repeatReminderAt =
+      dto.repeatReminderAt === undefined
+        ? (current?.repeatReminderAt ?? null)
+        : dto.repeatReminderAt
+          ? new Date(dto.repeatReminderAt)
+          : null;
+    let reminderRecipientIds =
+      dto.reminderRecipientIds === undefined
+        ? (current?.reminderRecipientIds ?? [])
+        : (dto.reminderRecipientIds ?? []);
+
+    if (reminderOffsetMinutes === null && !repeatReminderAt) {
+      return {
+        reminderOffsetMinutes: null,
+        reminderRecipientIds: [],
+        reminderAt: null,
+        repeatReminderAt: null,
+      };
+    }
+    if (!reminderRecipientIds.length) {
+      throw new BadRequestException(
+        'Reminder recipients are required when a reminder is configured',
+      );
+    }
+
+    const now = new Date();
+    const reminderAt =
+      reminderOffsetMinutes === null
+        ? null
+        : new Date(scheduledAt.getTime() - reminderOffsetMinutes * 60_000);
+    if (reminderAt && (reminderAt <= now || reminderAt >= scheduledAt)) {
+      throw new BadRequestException(
+        'The first reminder must be in the future and before the event',
+      );
+    }
+    if (repeatReminderAt && (repeatReminderAt <= now || repeatReminderAt >= scheduledAt)) {
+      throw new BadRequestException(
+        'The repeat reminder must be in the future and before the event',
+      );
+    }
+
+    const members = await this.prisma.familyMember.findMany({
+      where: { familyId, userId: { in: reminderRecipientIds } },
+      select: { userId: true },
+    });
+    if (members.length !== reminderRecipientIds.length) {
+      throw new BadRequestException('Reminder recipients must be members of the current family');
+    }
+    reminderRecipientIds = [...reminderRecipientIds];
+    return { reminderOffsetMinutes, reminderRecipientIds, reminderAt, repeatReminderAt };
   }
 }

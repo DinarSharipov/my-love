@@ -1,6 +1,20 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsDateString, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayUnique,
+  IsArray,
+  IsDateString,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 
 const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim() : value;
@@ -34,4 +48,38 @@ export class CreateFamilyEventDto {
   @MinLength(1)
   @MaxLength(500)
   location: string;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    maximum: 525600,
+    nullable: true,
+    description: 'Send the first reminder this many minutes before the event',
+  })
+  @ValidateIf((_, value) => value !== undefined && value !== null)
+  @IsInt()
+  @Min(1)
+  @Max(525600)
+  reminderOffsetMinutes?: number | null;
+
+  @ApiPropertyOptional({
+    type: [String],
+    format: 'uuid',
+    nullable: true,
+    description: 'Family member IDs that receive both configured reminders',
+  })
+  @ValidateIf((_, value) => value !== undefined && value !== null)
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  reminderRecipientIds?: string[] | null;
+
+  @ApiPropertyOptional({
+    format: 'date-time',
+    nullable: true,
+    description: 'Optional second reminder time in ISO 8601 format',
+  })
+  @ValidateIf((_, value) => value !== undefined && value !== null)
+  @IsDateString({ strict: true })
+  repeatReminderAt?: string | null;
 }

@@ -6,7 +6,9 @@ import { MaintenanceService } from './maintenance.service';
 export class MaintenanceWorker implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MaintenanceWorker.name);
   private timer?: NodeJS.Timeout;
+  private reminderTimer?: NodeJS.Timeout;
   private running = false;
+  private remindersRunning = false;
 
   constructor(
     private readonly config: ConfigService,
@@ -16,12 +18,16 @@ export class MaintenanceWorker implements OnModuleInit, OnModuleDestroy {
   onModuleInit(): void {
     if (!this.config.get<boolean>('CLEANUP_WORKER_ENABLED', true)) return;
     const interval = this.config.get<number>('CLEANUP_POLL_INTERVAL_MS', 3_600_000);
+    const reminderInterval = this.config.get<number>('REMINDER_POLL_INTERVAL_MS', 60_000);
     this.timer = setInterval(() => void this.tick(), interval);
+    this.reminderTimer = setInterval(() => void this.deliverReminders(), reminderInterval);
     void this.tick();
+    void this.deliverReminders();
   }
 
   onModuleDestroy(): void {
     if (this.timer) clearInterval(this.timer);
+    if (this.reminderTimer) clearInterval(this.reminderTimer);
   }
 
   private async tick(): Promise<void> {
@@ -30,7 +36,6 @@ export class MaintenanceWorker implements OnModuleInit, OnModuleDestroy {
     try {
       await this.maintenance.cleanupExpiredSecurityArtifacts();
       await this.maintenance.generateDueTaskRoutines();
-      await this.maintenance.deliverDueReminders();
       if (this.config.get<boolean>('RETENTION_WORKER_ENABLED', false)) {
         await this.maintenance.anonymizeExpiredAccounts();
       }
@@ -41,6 +46,21 @@ export class MaintenanceWorker implements OnModuleInit, OnModuleDestroy {
       });
     } finally {
       this.running = false;
+    }
+  }
+
+  private async deliverReminders(): Promise<void> {
+    if (this.remindersRunning) return;
+    this.remindersRunning = true;
+    try {
+      await this.maintenance.deliverDueReminders();
+    } catch (error) {
+      this.logger.error({
+        event: 'maintenance_reminders_error',
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+    } finally {
+      this.remindersRunning = false;
     }
   }
 }

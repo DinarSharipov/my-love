@@ -43,6 +43,7 @@ export const envValidationSchema = Joi.object({
   OUTBOX_ENCRYPTION_KEY: Joi.string().min(32).optional(),
   CLEANUP_WORKER_ENABLED: Joi.boolean().default(true),
   CLEANUP_POLL_INTERVAL_MS: Joi.number().integer().min(1000).default(3600000),
+  REMINDER_POLL_INTERVAL_MS: Joi.number().integer().min(1000).default(60000),
   RETENTION_WORKER_ENABLED: Joi.boolean().default(false),
   EMAIL_PROVIDER: Joi.string().valid('log', 'smtp').default('log'),
   SMTP_HOST: Joi.string().hostname().default('127.0.0.1'),
