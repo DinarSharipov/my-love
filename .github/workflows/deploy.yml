@@ -81,11 +81,16 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           PRODUCTION_ENV: ${{ secrets.PRODUCTION_ENV }}
+          TELEGRAM_INTEGRATION_SECRET: ${{ secrets.TELEGRAM_INTEGRATION_SECRET }}
         run: |
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" 'install -d -m 700 /opt/my-love'
           scp -i ~/.ssh/deploy_key docker-compose.prod.yml "$DEPLOY_USER@$DEPLOY_HOST:/opt/my-love/docker-compose.yml"
           scp -i ~/.ssh/deploy_key deploy/Caddyfile "$DEPLOY_USER@$DEPLOY_HOST:/opt/my-love/Caddyfile"
-          printf '%s\n' "$PRODUCTION_ENV" | ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" 'umask 077; cat > /opt/my-love/.env'
+          {
+            printf '%s\n' "$PRODUCTION_ENV"
+            printf '%s\n' 'TELEGRAM_INTEGRATION_ENABLED=true'
+            printf 'TELEGRAM_INTEGRATION_SECRET=%s\n' "$TELEGRAM_INTEGRATION_SECRET"
+          } | ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" 'umask 077; cat > /opt/my-love/.env'
       - name: Pull, migrate and restart
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
