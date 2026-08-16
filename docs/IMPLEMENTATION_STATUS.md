@@ -24,13 +24,14 @@ work сверять записи ниже с фактическими schema/con
 - Household hardening, scheduled routines, calendar projection и ADR visibility/consent
   завершены в текущем объёме.
 - Последний завершённый продуктовый срез: financial wallet API.
-- Последний завершённый финансовый срез: транзакционные idempotent
-  income/expense/transfer ledger-команды.
+- Последний завершённый финансовый срез: paginated ledger history, transaction detail
+  и idempotent reversal поверх income/expense/transfer-команд.
 - Последний инфраструктурный hardening-срез: единый transactional notification producer
   для всех текущих domain events и due reminders.
-- Текущий срез: настраиваемые Telegram-напоминания для family events.
+- Текущий срез: финансовый домен — budgets и recurring financial operations после
+  завершённого ledger critical path.
 - Приоритет реализации: сначала завершать основной пользовательский функционал
-  (ближайший backend-срез — финансовые income/expense/transfer-команды). Production
+  (ближайший backend-срез — budgets и recurring financial operations). Production
   SMTP, security/privacy hardening, reliability-настройки и расширенное E2E/CI-покрытие
   сознательно отложены в финальный этап стабилизации перед релизной готовностью, если
   только не станут блокером для уже выбранной продуктовой функции.
@@ -132,6 +133,14 @@ work сверять записи ниже с фактическими schema/con
   доступ к personal wallet есть только owner, к family wallet — partner; transfer требует
   две доступные неархивные wallet одной валюты. В HTTP response signed entry amount также
   сериализуется строкой, не JSON number.
+- Ledger history и correction: `GET /api/v1/families/me/ledger` с page/limit и optional
+  `walletId`, `GET /api/v1/families/me/ledger/:id` и
+  `POST /api/v1/families/me/ledger/:id/reversal`. History не возвращает транзакцию,
+  если хотя бы один её wallet недоступен текущему пользователю; archived wallet остаётся
+  читаемым в history по current visibility policy. Reversal требует отдельный
+  `Idempotency-Key`, создаёт новую balanced `REVERSAL` с инвертированными entries,
+  не меняет original и доступна только при управляемости всех активных затронутых wallets.
+  Повторная reversal или конкурентная отмена возвращает конфликт.
 - Notification preferences: отдельная модель и `GET/PATCH /api/v1/notifications/preferences`
   с in-app/email toggles и quiet hours `HH:mm`; настройки создаются при первом чтении.
 - Notification producers: после создания/завершения задачи и изменения позиции shopping
@@ -288,6 +297,11 @@ entries, reversal link и `FinancialCommandResult`. Deferred PostgreSQL triggers
   `Idempotency-Key` на пользовательское действие. Деньги передавать строкой `amountMinor`,
   не JavaScript number; для transfer выбирать только доступные пользователю wallet одной
   валюты.
+- Frontend follow-up (выполняет отдельный frontend-агент): добавить paginated ledger
+  history `GET /families/me/ledger?page&limit&walletId`, transaction detail и действие
+  отмены `POST /families/me/ledger/:id/reversal` с новым уникальным `Idempotency-Key`.
+  Отображать signed `entries[].amountMinor` как строки и скрывать reversal для уже
+  отменённой операции.
 
 ## Журнал backend-срезов
 
@@ -339,5 +353,6 @@ entries, reversal link и `FinancialCommandResult`. Deferred PostgreSQL triggers
 | 2026-08-16 | Financial schema foundation | ADR 0006, migration `20260816000000_add_financial_foundation`: wallet, immutable balanced ledger, reversal и transactional command result | generate, validate, lint, 21 suites / 59 unit, 10 e2e, 26 migrations, build, diff-check | wallet API и idempotent ledger commands |
 | 2026-08-16 | Financial wallet API | `POST/GET/PATCH/DELETE /families/me/wallets`; server-owned family/owner, PRIVATE/PARTNER/FAMILY reads, partner-only family wallet management, concurrency и audit | lint, 22 suites / 64 unit, build, diff-check | idempotent ledger commands |
 | 2026-08-16 | Ledger commands | `POST /families/me/ledger/income`, `/expense`, `/transfer`; mandatory command-local idempotency, immutable balanced entries, wallet access/currency validation и safe string minor-unit response | generate, targeted unit, lint, build, diff-check | ledger history и reversal commands |
+| 2026-08-16 | Ledger history и reversal | `GET /families/me/ledger`, `GET /:id`, `POST /:id/reversal`; paginated visibility-safe history, immutable inverse entries, idempotency и race-safe single reversal | 24 unit suites / 71 tests, lint, build, diff-check | budgets и recurring financial operations |
 | 2026-08-16 | Notification channel policy | domain notifications только in-app/Telegram; email только security/account recovery; production bot readiness checklist | code/config audit | production gateway wiring после получения hostname/token/secrets |
 | 2026-08-16 | Приоритизация roadmap | основной пользовательский функционал впереди; SMTP, hardening и расширенные E2E/CI отложены до финальной стабилизации | status review | idempotent financial ledger commands |

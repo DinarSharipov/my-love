@@ -54,3 +54,16 @@ export class CreateTransferCommandDto {
   @Length(1, 500)
   note?: string;
 }
+
+export class ReverseLedgerTransactionDto {
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsOptional()
+  @IsISO8601({ strict: true })
+  occurredAt?: string;
+
+  @ApiPropertyOptional({ maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @Length(1, 500)
+  note?: string;
+}

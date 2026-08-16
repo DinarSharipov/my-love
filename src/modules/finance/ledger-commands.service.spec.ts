@@ -27,8 +27,16 @@ describe('LedgerCommandsService', () => {
         findFirst: jest
           .fn()
           .mockResolvedValue({ id: walletId, ownerId: userId, type: 'PERSONAL', currency: 'RUB' }),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: walletId, ownerId: userId, type: 'PERSONAL', currency: 'RUB' },
+          ]),
       },
-      ledgerTransaction: { create: jest.fn().mockResolvedValue(transaction) },
+      ledgerTransaction: {
+        create: jest.fn().mockResolvedValue(transaction),
+        findFirst: jest.fn().mockResolvedValue({ ...transaction, reversedBy: null }),
+      },
       financialCommandResult: { create: jest.fn().mockResolvedValue({}) },
     };
     const prisma = {
@@ -93,5 +101,17 @@ describe('LedgerCommandsService', () => {
         amountMinor: '1',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('creates an inverse immutable transaction for a reversal', async () => {
+    const { service, tx, audit } = setup();
+
+    await service.reverse(userId, 'transaction-id', 'reversal-key-001', {});
+
+    expect(tx.ledgerTransaction.create).toHaveBeenCalledTimes(1);
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'ledger.reversal' }),
+      tx,
+    );
   });
 });

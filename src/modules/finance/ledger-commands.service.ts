@@ -9,7 +9,11 @@ import { LedgerTransactionType, Prisma, WalletType } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../database/prisma.service';
 import { FamilyMembershipService } from '../family-members/family-membership.service';
-import { CreateLedgerCommandDto, CreateTransferCommandDto } from './dto/ledger-command.dto';
+import {
+  CreateLedgerCommandDto,
+  CreateTransferCommandDto,
+  ReverseLedgerTransactionDto,
+} from './dto/ledger-command.dto';
 
 const COMMAND_SCOPE = 'finance.ledger.v1';
 const MAX_AMOUNT_MINOR = 9223372036854775807n;
@@ -83,6 +87,67 @@ export class LedgerCommandsService {
     }
   }
 
+  async reverse(
+    userId: string,
+    transactionId: string,
+    key: string,
+    dto: ReverseLedgerTransactionDto,
+  ) {
+    const context = await this.membership.requireMembership(userId);
+    const requestHash = this.requestHash('reversal', { transactionId, ...dto });
+    const existing = await this.replay(userId, key, requestHash);
+    if (existing) return existing;
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const original = await tx.ledgerTransaction.findFirst({
+          where: { id: transactionId, familyId: context.familyId },
+          include: { ...transactionInclude, reversedBy: { select: { id: true } } },
+        });
+        if (!original) throw new NotFoundException('Ledger transaction not found');
+        if (original.type === LedgerTransactionType.REVERSAL) {
+          throw new BadRequestException('A reversal cannot be reversed');
+        }
+        if (original.reversesId || original.reversedBy) {
+          throw new ConflictException('Ledger transaction was already reversed');
+        }
+
+        const walletIds = original.entries.flatMap((entry) =>
+          entry.walletId ? [entry.walletId] : [],
+        );
+        const wallets = await tx.wallet.findMany({
+          where: { id: { in: walletIds }, familyId: context.familyId, archivedAt: null },
+        });
+        if (
+          wallets.length !== new Set(walletIds).size ||
+          wallets.some((wallet) => !this.canManage(wallet, userId, context.role))
+        ) {
+          throw new NotFoundException('Ledger transaction not found');
+        }
+
+        return this.persist(tx, userId, context.familyId, key, requestHash, {
+          type: LedgerTransactionType.REVERSAL,
+          currency: original.currency,
+          occurredAt: this.occurredAt(dto.occurredAt),
+          note: dto.note,
+          reversesId: original.id,
+          entries: original.entries.map((entry) => ({
+            walletId: entry.walletId,
+            amountMinor: -entry.amountMinor,
+          })),
+        });
+      });
+    } catch (error: unknown) {
+      return this.replayAfterConflict(
+        userId,
+        key,
+        requestHash,
+        error,
+        'Ledger transaction was already reversed',
+      );
+    }
+  }
+
   private async createWalletCommand(
     userId: string,
     key: string,
@@ -130,6 +195,7 @@ export class LedgerCommandsService {
       currency: string;
       occurredAt: Date;
       note?: string;
+      reversesId?: string;
       entries: Array<{ walletId: string | null; amountMinor: bigint }>;
     },
   ) {
@@ -141,6 +207,7 @@ export class LedgerCommandsService {
         currency: input.currency,
         occurredAt: input.occurredAt,
         note: input.note,
+        reversesId: input.reversesId,
         entries: { create: input.entries },
       },
       include: transactionInclude,
@@ -177,10 +244,12 @@ export class LedgerCommandsService {
     key: string,
     requestHash: string,
     error: unknown,
+    uniqueConflictMessage?: string,
   ) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       const replay = await this.replay(userId, key, requestHash);
       if (replay) return replay;
+      if (uniqueConflictMessage) throw new ConflictException(uniqueConflictMessage);
     }
     throw error;
   }

@@ -2,26 +2,57 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Headers,
   HttpCode,
   HttpStatus,
   Post,
+  Param,
+  Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiCreatedResponse, ApiHeader, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiHeader,
+  ApiOkResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user.type';
-import { CreateLedgerCommandDto, CreateTransferCommandDto } from './dto/ledger-command.dto';
+import {
+  CreateLedgerCommandDto,
+  CreateTransferCommandDto,
+  ReverseLedgerTransactionDto,
+} from './dto/ledger-command.dto';
+import { LedgerHistoryQueryDto } from './dto/ledger-history-query.dto';
 import { LedgerTransactionResponseDto } from './dto/ledger-transaction-response.dto';
+import { PaginatedLedgerTransactionsResponseDto } from './dto/paginated-ledger-transactions-response.dto';
 import { LedgerCommandsService } from './ledger-commands.service';
+import { LedgerHistoryService } from './ledger-history.service';
 
 @ApiTags('finance')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller({ path: 'families/me/ledger', version: '1' })
 export class LedgerCommandsController {
-  constructor(private readonly commands: LedgerCommandsService) {}
+  constructor(
+    private readonly commands: LedgerCommandsService,
+    private readonly history: LedgerHistoryService,
+  ) {}
+
+  @Get()
+  @ApiOkResponse({ type: PaginatedLedgerTransactionsResponseDto })
+  list(@CurrentUser() user: AuthenticatedUser, @Query() query: LedgerHistoryQueryDto) {
+    return this.history.list(user.id, query);
+  }
+
+  @Get(':id')
+  @ApiOkResponse({ type: LedgerTransactionResponseDto })
+  get(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.history.get(user.id, id);
+  }
 
   @Post('income')
   @ApiCreatedResponse({ type: LedgerTransactionResponseDto })
@@ -67,6 +98,23 @@ export class LedgerCommandsController {
     @Body() dto: CreateTransferCommandDto,
   ) {
     return this.commands.transfer(user.id, this.requiredKey(key), dto);
+  }
+
+  @Post(':id/reversal')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiCreatedResponse({ type: LedgerTransactionResponseDto })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    description: 'Required retry key (8-128 safe ASCII characters).',
+  })
+  reverse(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Headers('idempotency-key') key: string | undefined,
+    @Body() dto: ReverseLedgerTransactionDto,
+  ) {
+    return this.commands.reverse(user.id, id, this.requiredKey(key), dto);
   }
 
   private requiredKey(key: string | undefined): string {

@@ -57,7 +57,7 @@ export class WalletsService {
   async list(userId: string) {
     const { familyId, role } = await this.membership.requireMembership(userId);
     return this.prisma.wallet.findMany({
-      where: { familyId, archivedAt: null, ...this.readableBy(userId, role) },
+      where: { familyId, archivedAt: null, ...this.visibleTo(userId, role) },
       orderBy: [{ type: 'asc' }, { createdAt: 'asc' }],
     });
   }
@@ -65,7 +65,7 @@ export class WalletsService {
   async get(userId: string, walletId: string) {
     const { familyId, role } = await this.membership.requireMembership(userId);
     const wallet = await this.prisma.wallet.findFirst({
-      where: { id: walletId, familyId, archivedAt: null, ...this.readableBy(userId, role) },
+      where: { id: walletId, familyId, archivedAt: null, ...this.visibleTo(userId, role) },
     });
     if (!wallet) throw new NotFoundException('Wallet not found');
     return wallet;
@@ -151,7 +151,7 @@ export class WalletsService {
     if (!valid) throw new BadRequestException('Visibility is incompatible with wallet type');
   }
 
-  private readableBy(userId: string, role: FamilyMemberRole): Prisma.WalletWhereInput {
+  visibleTo(userId: string, role: FamilyMemberRole): Prisma.WalletWhereInput {
     return {
       OR: [
         { type: WalletType.FAMILY },
