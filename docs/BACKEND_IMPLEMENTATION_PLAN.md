@@ -446,7 +446,7 @@ inbox/preferences/reminders и dashboard. Дальнейший порядок:
 6. [x] Financial schema foundation: wallet visibility и immutable ledger.
 7. [x] Wallet API: server-owned family/owner scope, visibility, optimistic concurrency
    и audit.
-8. Idempotent income/expense/transfer ledger commands, затем ledger query.
+8. [x] Idempotent income/expense/transfer ledger commands и ledger query/history с reversal.
 9. Production Telegram gateway: отдельный HTTPS hostname/route, secrets, BotFather
    token, webhook registration и delivery/linking smoke tests.
 

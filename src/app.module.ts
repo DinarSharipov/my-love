@@ -22,6 +22,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { NotificationProducerModule } from './common/notifications/notification-producer.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { FinanceModule } from './modules/finance/finance.module';
+import { WellbeingModule } from './modules/wellbeing/wellbeing.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { FinanceModule } from './modules/finance/finance.module';
     FirstDateModule,
     CalendarModule,
     FinanceModule,
+    WellbeingModule,
     HealthModule,
   ],
   providers: [

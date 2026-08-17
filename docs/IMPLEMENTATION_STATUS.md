@@ -8,21 +8,26 @@ work сверять записи ниже с фактическими schema/con
 
 ## Текущий фокус
 
-- Roadmap: этап 2 — hardening бытового MVP перед финансовым доменом.
+Актуально на 17 августа 2026 года: финансовый домен и его hardening завершены в объёме текущего MVP. Wellbeing-срез реализован в backend MVP для private check-ins, scoped consent, WHO-5, Gratitude, SupportRequest, Ritual и CoupleMeeting.
+
+- Roadmap: этап 4 — wellbeing и гармония после завершённой visibility/consent foundation.
 - Последний завершённый продуктовый срез: Telegram auth и domain notifications.
 - Последний завершённый инфраструктурный срез: production CI/CD через GitHub Actions,
   GHCR и Docker Compose на отдельном сервере.
 - Этапы 0 и 1 закрыты в части auth, family foundation, invitations и базового
-  календаря. Общая visibility/consent policy остаётся блокером перед finance и wellbeing.
-- Этап 2 реализован минимально: tasks, routines, shopping, inbox, reminders и dashboard
-  доступны, но требуют расширенного authorization/E2E покрытия, автоматической генерации
-  routines, пагинации inbox и полных Swagger response contracts.
+  календаря. Общая visibility/consent policy завершена и используется финансовым доменом.
+- Этап 2 закрыт в текущем MVP-объёме: tasks, routines, shopping, inbox, reminders, dashboard
+  и calendar projection доступны; базовые authorization/E2E-проверки и Swagger contracts усилены
+  в рамках household hardening.
 - Последний завершённый срез: timezone-aware quiet-hours scheduling для Telegram outbox
   при постановке и непосредственно перед delivery.
 - Последний завершённый продуктовый срез: financial schema foundation — wallet и
   immutable balanced ledger по ADR 0006.
 - Household hardening, scheduled routines, calendar projection и ADR visibility/consent
   завершены в текущем объёме.
+- Финансовый MVP закрыт в backend: wallets, immutable ledger и reversal, categories/budgets,
+  recurring payments, summary/analytics, goals/envelopes, meetings/decisions и
+  partner-only expense statistics реализованы и покрыты targeted unit-тестами.
 - Последний завершённый продуктовый срез: financial wallet API.
 - Последний завершённый финансовый срез: paginated ledger history, transaction detail
   и idempotent reversal поверх income/expense/transfer-команд.
@@ -41,9 +46,8 @@ work сверять записи ниже с фактическими schema/con
 - Последний завершённый финансовый срез: фиксирование расходов уже работает через
   immutable ledger; добавлена статистика трат семьи по участникам/категориям за весь
   период или произвольный диапазон дат.
-- Следующий срез: wellbeing-домен.
-- Приоритет реализации: сначала завершать основной пользовательский функционал
-  (ближайший backend-срез — financial meetings/decisions либо wellbeing). Production
+- Следующий срез: финальная privacy/retention стабилизация wellbeing.
+  Production
   SMTP, security/privacy hardening, reliability-настройки и расширенное E2E/CI-покрытие
   сознательно отложены в финальный этап стабилизации перед релизной готовностью, если
   только не станут блокером для уже выбранной продуктовой функции.
@@ -413,6 +417,37 @@ immutable `EXPENSE` и reversal таких расходов, группируе�
   передавать `If-Match` из `version`; решение принимает только `AGREED` или `REJECTED`.
   В текущем frontend RTK Query этих endpoint нет; существующие contracts не изменены.
 
+## Finance: MVP завершён
+
+- Финансовый backend-срез завершён; отдельные frontend follow-up из раздела выше не являются
+  backend-блокерами и выполняются frontend-агентом по актуальному Swagger-контракту.
+- Проверка 17 августа 2026: 11 finance unit suites, 27 tests — passed.
+
+## Wellbeing: private check-ins
+
+- Добавлена миграция `20260817030000_add_wellbeing_check_ins` и модель `WellbeingCheckIn`.
+- Добавлен owner-only API: `POST/GET /families/me/wellbeing/check-ins`, `GET/DELETE /:id`.
+- Check-in хранит шкалы `mood`, `energy`, `stress` от 1 до 5, приватную заметку и `supportRequest`.
+- Доступ требует active family membership; чужие записи не раскрываются и возвращают 404.
+- Добавлен scoped consent API: `POST/GET /families/me/wellbeing/check-ins/consents`, отзыв через
+  `DELETE /families/me/wellbeing/check-ins/consents/:id` и чтение разрешённых полей партнёра через
+  `GET /families/me/wellbeing/check-ins/shared-with-me`.
+- Consent выдаётся только активному партнёру той же семьи, поддерживает scopes `mood`, `energy`,
+  `stress`, `supportRequest` и optional expiry; `note` намеренно не входит в публикуемые scopes.
+- Grant хранится отдельной FK-backed моделью, повторная выдача обновляет существующий grant,
+  отзыв делает его недействительным без удаления истории.
+- Добавлен owner-only WHO-5 API: `POST/GET /families/me/wellbeing/check-ins/assessments`;
+  принимаются ровно 5 ответов `0..5`, score вычисляется backend прозрачно как сумма.
+- Добавлены owner-only `GET /trends` и `GET /export`, а также `DELETE /families/me/wellbeing/check-ins`
+  для атомарного hard delete check-ins, assessments и consent grants владельца.
+- Добавлена миграция `20260817060000_add_wellbeing_gratitudes` и API `POST/GET
+  /families/me/wellbeing/check-ins/gratitudes`, `DELETE /gratitudes/:id`: благодарность адресуется
+  только активному partner той же семьи, видна участникам этой семьи и удаляется только автором.
+  Уведомление нейтральное и не содержит текст благодарности.
+
+Проверки: Prisma Client regenerated, targeted ESLint, wellbeing tests (6/6) и `git diff --check` пройдены.
+Полный `tsc` сейчас блокируется существующими отсутствующими типами `nodemailer` и `supertest`, не связанными с wellbeing.
+
 ## Журнал backend-срезов
 
 | Дата       | Срез                                   | Миграция/API                                                                                                                                                                                                | Проверки                                                                                | Следующий шаг                                                     |
@@ -472,5 +507,12 @@ immutable `EXPENSE` и reversal таких расходов, группируе�
 | 2026-08-17 | Financial meetings/decisions           | Миграция `20260817010000_add_financial_meetings`; partner-only meetings, nested decisions, second-partner response и transactional Telegram/in-app notifications                                            | targeted/full unit, lint, clean 31-migration E2E, build, diff-check                     | wellbeing-домен                                                   |
 | 2026-08-17 | Expense recording and family statistics | Existing idempotent `ledger/expense` confirmed; category creation for every member, author/partner management and additive partner-only `GET /finance/expense-statistics` for all-time/date-range member/category totals | targeted/full unit, lint, build, clean 31-migration E2E, diff-check | wellbeing-домен |
 | 2026-08-17 | Ledger trigger correction               | миграция `20260817020000_fix_ledger_constraint_triggers`: раздельные deferred handlers для transaction/entry исправляют 500 на финансовых командах; добавлен реальный E2E expense сценарий | lint, full unit, clean 32-migration E2E, build, diff-check | wellbeing-домен |
+| 2026-08-17 | Wellbeing check-ins и consent           | миграция `20260817030000_add_wellbeing_check_ins` и `20260817040000_add_wellbeing_consent_grants`; private check-ins, scoped partner consent, expiry/revoke и shared read без `note` | Prisma generate, targeted ESLint, wellbeing 3/3 unit, tsc ограничен отсутствующими `nodemailer`/`supertest`, diff-check | wellbeing hardening, retention/privacy и child profiles |
+| 2026-08-17 | Wellbeing private completion             | миграция `20260817050000_add_wellbeing_assessments`; owner-only WHO-5, trends, export и атомарный hard delete wellbeing data | Prisma generate, targeted ESLint, wellbeing 5/5 unit, tsc ограничен отсутствующими `nodemailer`/`supertest`, diff-check | совместные wellbeing-сценарии и финальная privacy/retention стабилизация |
+| 2026-08-17 | Wellbeing gratitude                     | миграция `20260817060000_add_wellbeing_gratitudes`; адресные благодарности партнёру, family scope, author-only delete и нейтральное уведомление без текста | Prisma generate, targeted ESLint, wellbeing 6/6 unit, diff-check | privacy/retention стабилизация wellbeing |
+| 2026-08-17 | Wellbeing support request               | миграция `20260817070000_add_wellbeing_support_requests`; адресный запрос поддержки между партнёрами, статусы OPEN/ACKNOWLEDGED/CLOSED и нейтральное уведомление | Prisma generate, targeted ESLint, wellbeing 6/6 unit, diff-check | privacy/retention стабилизация wellbeing |
+| 2026-08-17 | Wellbeing ritual                        | миграция `20260817080000_add_wellbeing_rituals`; семейные ритуалы с cadence/nextAt, активностью и авторским CRUD | Prisma generate, targeted ESLint, wellbeing 6/6 unit, diff-check | CoupleMeeting и privacy/retention |
+| 2026-08-17 | Wellbeing CoupleMeeting                 | миграция `20260817090000_add_wellbeing_couple_meetings`; weekly-встречи с секциями, приватными ответами до publish и отдельным shared decision | Prisma generate, targeted ESLint, wellbeing 6/6 unit, diff-check | финальная privacy/retention стабилизация wellbeing |
+| 2026-08-17 | Wellbeing privacy/retention stabilization | wellbeing export расширен на все реализованные сущности с ownership/participant scope; hard delete удаляет личные и адресованные пользователю записи, а partner-owned rituals/meetings сохраняет | Prisma generate, targeted ESLint, wellbeing 7/7 unit, diff-check | следующий slice по roadmap |
 | 2026-08-16 | Notification channel policy            | domain notifications только in-app/Telegram; email только security/account recovery; production bot readiness checklist                                                                                     | code/config audit                                                                       | production gateway wiring после получения hostname/token/secrets  |
 | 2026-08-16 | Приоритизация roadmap                  | основной пользовательский функционал впереди; SMTP, hardening и расширенные E2E/CI отложены до финальной стабилизации                                                                                       | status review                                                                           | idempotent financial ledger commands                              |
