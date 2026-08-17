@@ -226,11 +226,14 @@ work сверять записи ниже с фактическими schema/con
 ## Миграции
 
 Применяются только новыми файлами; текущая последняя миграция:
-`20260817010000_add_financial_meetings`. Всего 31 миграция.
+`20260817020000_fix_ledger_constraint_triggers`. Всего 32 миграции.
 
 Financial foundation добавляет personal/family wallets, append-only ledger transactions/
 entries, reversal link и `FinancialCommandResult`. Deferred PostgreSQL triggers требуют
 минимум две balanced entries, совпадение family/currency/category и запрещают update/delete ledger.
+Миграция `20260817020000_fix_ledger_constraint_triggers` заменяет общий deferred trigger
+двумя обработчиками с точной структурой `NEW` каждой таблицы. Это исправляет production
+500 при создании income/expense/transfer, сохраняя те же append-only и balance инварианты.
 Миграция `20260816020000_add_budget_categories` добавляет family-shared категории
 `INCOME`/`EXPENSE`, optional category к ledger transaction и budget лимит expense-category
 на первый день календарного месяца. Бюджет — план, а не изменяемый баланс: его фактическая
@@ -468,5 +471,6 @@ immutable `EXPENSE` и reversal таких расходов, группируе�
 | 2026-08-17 | Financial analytics                    | `GET /families/me/finance/analytics`; visibility-safe multi-month actual cash flow, recurring mandatory plan и projected visible balances без новой projection/auto-posting                                 | targeted/full unit, lint, clean 30-migration E2E, build, diff-check                     | financial meetings/decisions или wellbeing                        |
 | 2026-08-17 | Financial meetings/decisions           | Миграция `20260817010000_add_financial_meetings`; partner-only meetings, nested decisions, second-partner response и transactional Telegram/in-app notifications                                            | targeted/full unit, lint, clean 31-migration E2E, build, diff-check                     | wellbeing-домен                                                   |
 | 2026-08-17 | Expense recording and family statistics | Existing idempotent `ledger/expense` confirmed; category creation for every member, author/partner management and additive partner-only `GET /finance/expense-statistics` for all-time/date-range member/category totals | targeted/full unit, lint, build, clean 31-migration E2E, diff-check | wellbeing-домен |
+| 2026-08-17 | Ledger trigger correction               | миграция `20260817020000_fix_ledger_constraint_triggers`: раздельные deferred handlers для transaction/entry исправляют 500 на финансовых командах; добавлен реальный E2E expense сценарий | lint, full unit, clean 32-migration E2E, build, diff-check | wellbeing-домен |
 | 2026-08-16 | Notification channel policy            | domain notifications только in-app/Telegram; email только security/account recovery; production bot readiness checklist                                                                                     | code/config audit                                                                       | production gateway wiring после получения hostname/token/secrets  |
 | 2026-08-16 | Приоритизация roadmap                  | основной пользовательский функционал впереди; SMTP, hardening и расширенные E2E/CI отложены до финальной стабилизации                                                                                       | status review                                                                           | idempotent financial ledger commands                              |

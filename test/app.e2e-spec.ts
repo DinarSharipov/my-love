@@ -68,6 +68,12 @@ interface AccountDeletionRequestResult {
   scheduledFor: string;
 }
 
+interface LedgerTransactionResult {
+  type: string;
+  currency: string;
+  entries: Array<{ walletId: string | null; amountMinor: string }>;
+}
+
 describe('API security regression (e2e)', () => {
   let app: INestApplication;
   let httpServer: Parameters<typeof request>[0];
@@ -96,8 +102,7 @@ describe('API security regression (e2e)', () => {
 
   afterAll(async () => {
     try {
-      await prisma.family.deleteMany();
-      await prisma.user.deleteMany();
+      await prisma.$executeRaw`TRUNCATE TABLE "families", "users" CASCADE`;
     } finally {
       await app.close();
     }
@@ -273,6 +278,41 @@ describe('API security regression (e2e)', () => {
 
     await request(httpServer).post('/api/v1/auth/logout').set(auth(alice.accessToken)).expect(204);
     await request(httpServer).get('/api/v1/families/me').set(auth(alice.accessToken)).expect(401);
+  });
+
+  it('records an expense in an accessible family wallet', async () => {
+    const alice = await register('LedgerAlice');
+    const bob = await register('LedgerBob');
+    await createFamily(alice, bob);
+
+    const wallet = await request(httpServer)
+      .post('/api/v1/families/me/wallets')
+      .set(auth(alice.accessToken))
+      .send({ type: 'FAMILY', name: 'Общий', currency: 'RUB' })
+      .expect(201);
+    const walletId = (wallet.body as { id: string }).id;
+
+    const expense = await request(httpServer)
+      .post('/api/v1/families/me/ledger/expense')
+      .set(auth(alice.accessToken))
+      .set('Idempotency-Key', 'ledger-expense-e2e-0001')
+      .send({
+        walletId,
+        amountMinor: '75000',
+        occurredAt: '2026-06-20T07:00:00.000Z',
+        note: 'коляска',
+      })
+      .expect(201);
+
+    const expenseBody = expense.body as LedgerTransactionResult;
+    expect(expenseBody.type).toBe('EXPENSE');
+    expect(expenseBody.currency).toBe('RUB');
+    expect(expenseBody.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ walletId, amountMinor: '-75000' }),
+        expect.objectContaining({ walletId: null, amountMinor: '75000' }),
+      ]),
+    );
   });
 
   it('creates and accepts a closed one-time invitation after registration', async () => {
