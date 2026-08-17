@@ -1,6 +1,6 @@
 # My Love backend — статус реализации
 
-Последняя сверка с кодом: 16 августа 2026 года.
+Последняя сверка с кодом: 17 августа 2026 года.
 
 Этот файл — обязательная точка входа для новых backend-агентов. Перед substantial
 work сверять записи ниже с фактическими schema/controllers/tests. Frontend находится
@@ -38,6 +38,9 @@ work сверять записи ниже с фактическими schema/con
   на цель, ledger-backed progress и идемпотентные пополнения.
 - Последний завершённый финансовый срез: совместные financial meetings/decisions —
   планирование финансовой встречи и подтверждаемое вторым партнёром решение.
+- Последний завершённый финансовый срез: фиксирование расходов уже работает через
+  immutable ledger; добавлена статистика трат семьи по участникам/категориям за весь
+  период или произвольный диапазон дат.
 - Следующий срез: wellbeing-домен.
 - Приоритет реализации: сначала завершать основной пользовательский функционал
   (ближайший backend-срез — financial meetings/decisions либо wellbeing). Production
@@ -262,6 +265,15 @@ predicate полной видимости ledger transaction, что и history;
 видимости кошелька. Значения — строки minor units; FX conversion отсутствует. Прогноз
 не создаёт ledger transaction и не считает regular payment фактической операцией.
 
+Expense statistics — отдельный partner-only read model без новой persistence-проекции:
+`GET /api/v1/families/me/finance/expense-statistics?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD`.
+Без параметров он охватывает весь период; границы включительны. Отчёт строится только из
+immutable `EXPENSE` и reversal таких расходов, группирует суммы minor units по валюте,
+создателю исходной траты и категории. Reversal относится к автору исходного расхода, а
+не к пользователю, который выполнил отмену. Его видят только партнёры, поскольку он
+намеренно сводит все личные и семейные wallet семьи. Категорию теперь вправе создать
+любой активный участник семьи; изменить/архивировать — её автор или партнёр.
+
 Миграция `20260817010000_add_financial_meetings` добавляет partner-only сущности
 `FinancialMeeting` и вложенные `FinancialDecision`. Встреча имеет расписание, заметки,
 статус и version; решение создаётся в рамках встречи, а согласовать либо отклонить его
@@ -385,6 +397,12 @@ predicate полной видимости ledger transaction, что и history;
   `expenseMinor`, `netMinor`. `balanceForecast` содержит доступный текущий остаток и
   прогноз на окно `forecastAsOf`–`forecastThrough`; это не банковская сверка и не
   auto-posting. Endpoint additive, текущие RTK Query contracts не изменены.
+- Frontend follow-up (выполняет отдельный frontend-агент): добавить создание категории
+  через `POST /families/me/financial-categories` для активного участника семьи и экран
+  partner-only статистики через `GET /families/me/finance/expense-statistics`. Параметры
+  `dateFrom`/`dateTo` optional и имеют вид `YYYY-MM-DD`; без них отчёт охватывает всю
+  историю. Все суммы `totals[].amountMinor` — строки minor units, breakdown идёт по
+  `members[]` и их `categories[]`; FX conversion отсутствует.
 - Frontend follow-up (выполняет отдельный frontend-агент): добавить partner-only экран
   финансовых встреч: `POST/GET/PATCH/DELETE /families/me/financial-meetings`,
   `POST /:id/complete`, создание решения `POST /:id/decisions` и ответ второго партнёра
@@ -449,5 +467,6 @@ predicate полной видимости ledger transaction, что и history;
 | 2026-08-17 | Financial goals/envelopes              | миграция `20260816040000_add_financial_goals`; dedicated envelope wallet, ledger-derived progress, idempotent contribution transfer и achievement notification                                              | generate, lint, 28 unit suites / 80 tests, чистый 30-migration E2E, build, diff-check   | financial analytics                                               |
 | 2026-08-17 | Financial analytics                    | `GET /families/me/finance/analytics`; visibility-safe multi-month actual cash flow, recurring mandatory plan и projected visible balances без новой projection/auto-posting                                 | targeted/full unit, lint, clean 30-migration E2E, build, diff-check                     | financial meetings/decisions или wellbeing                        |
 | 2026-08-17 | Financial meetings/decisions           | Миграция `20260817010000_add_financial_meetings`; partner-only meetings, nested decisions, second-partner response и transactional Telegram/in-app notifications                                            | targeted/full unit, lint, clean 31-migration E2E, build, diff-check                     | wellbeing-домен                                                   |
+| 2026-08-17 | Expense recording and family statistics | Existing idempotent `ledger/expense` confirmed; category creation for every member, author/partner management and additive partner-only `GET /finance/expense-statistics` for all-time/date-range member/category totals | targeted/full unit, lint, build, clean 31-migration E2E, diff-check | wellbeing-домен |
 | 2026-08-16 | Notification channel policy            | domain notifications только in-app/Telegram; email только security/account recovery; production bot readiness checklist                                                                                     | code/config audit                                                                       | production gateway wiring после получения hostname/token/secrets  |
 | 2026-08-16 | Приоритизация roadmap                  | основной пользовательский функционал впереди; SMTP, hardening и расширенные E2E/CI отложены до финальной стабилизации                                                                                       | status review                                                                           | idempotent financial ledger commands                              |

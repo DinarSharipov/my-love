@@ -20,6 +20,8 @@ import { FinancialAnalyticsController } from './financial-analytics.controller';
 import { FinancialAnalyticsService } from './financial-analytics.service';
 import { FinancialMeetingsController } from './financial-meetings.controller';
 import { FinancialMeetingsService } from './financial-meetings.service';
+import { ExpenseStatisticsController } from './expense-statistics.controller';
+import { ExpenseStatisticsService } from './expense-statistics.service';
 
 @Module({
   imports: [FamilyMembersModule, NotificationProducerModule],
@@ -33,6 +35,7 @@ import { FinancialMeetingsService } from './financial-meetings.service';
     FinancialGoalsController,
     FinancialAnalyticsController,
     FinancialMeetingsController,
+    ExpenseStatisticsController,
   ],
   providers: [
     WalletsService,
@@ -45,6 +48,7 @@ import { FinancialMeetingsService } from './financial-meetings.service';
     FinancialGoalsService,
     FinancialAnalyticsService,
     FinancialMeetingsService,
+    ExpenseStatisticsService,
   ],
   exports: [WalletsService, RecurringPaymentsService],
 })
