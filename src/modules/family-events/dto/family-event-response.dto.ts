@@ -16,6 +16,7 @@ export type FamilyEventEntity = FamilyEvent & {
 export class FamilyEventResponseDto {
   @ApiProperty({ format: 'uuid' }) id: string;
   @ApiProperty({ format: 'uuid' }) familyId: string;
+  @ApiPropertyOptional({ format: 'uuid', nullable: true }) childId: string | null;
   @ApiProperty() name: string;
   @ApiPropertyOptional({ type: String, nullable: true }) description: string | null;
   @ApiProperty({ format: 'date-time' }) scheduledAt: Date;
@@ -42,6 +43,7 @@ export class FamilyEventResponseDto {
     return {
       id: event.id,
       familyId: event.familyId,
+      childId: event.childId,
       name: event.name,
       description: event.description,
       scheduledAt: event.scheduledAt,

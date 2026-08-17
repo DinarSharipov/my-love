@@ -40,4 +40,8 @@ export class CreateTaskRoutineDto {
   @IsOptional()
   @IsUUID()
   assignedToId?: string;
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @IsUUID()
+  childId?: string;
 }

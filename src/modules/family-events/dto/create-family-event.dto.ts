@@ -20,6 +20,15 @@ const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim() : value;
 
 export class CreateFamilyEventDto {
+  @ApiPropertyOptional({
+    format: 'uuid',
+    nullable: true,
+    description: 'Optional child profile this event concerns',
+  })
+  @ValidateIf((_, value) => value !== undefined && value !== null)
+  @IsUUID('4')
+  childId?: string | null;
+
   @ApiProperty({ example: 'Ужин в ресторане', maxLength: 200 })
   @Transform(trim)
   @IsString()

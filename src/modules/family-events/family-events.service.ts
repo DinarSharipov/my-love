@@ -40,10 +40,12 @@ export class FamilyEventsService {
       throw new ConflictException('A family must have exactly two partners to plan an event');
     }
     const reminders = await this.resolveReminderSettings(familyId, dto, scheduledAt);
+    await this.ensureFamilyChild(familyId, dto.childId);
 
     const event = await this.prisma.familyEvent.create({
       data: {
         familyId,
+        childId: dto.childId ?? null,
         proposedById: userId,
         name: dto.name,
         description: dto.description || null,
@@ -128,7 +130,8 @@ export class FamilyEventsService {
       dto.location === undefined &&
       dto.reminderOffsetMinutes === undefined &&
       dto.reminderRecipientIds === undefined &&
-      dto.repeatReminderAt === undefined
+      dto.repeatReminderAt === undefined &&
+      dto.childId === undefined
     ) {
       throw new BadRequestException('At least one field must be provided');
     }
@@ -154,6 +157,7 @@ export class FamilyEventsService {
       const reminders = reminderChanged
         ? await this.resolveReminderSettings(familyId, dto, scheduledAt, current)
         : undefined;
+      await this.ensureFamilyChild(familyId, dto.childId, transaction);
 
       const result = await transaction.familyEvent.updateMany({
         where: {
@@ -164,6 +168,7 @@ export class FamilyEventsService {
         },
         data: {
           name: dto.name,
+          childId: dto.childId === undefined ? undefined : dto.childId,
           description:
             dto.description === undefined
               ? undefined
@@ -199,6 +204,16 @@ export class FamilyEventsService {
       body: `${updated.name} — требуется повторное подтверждение.`,
     });
     return FamilyEventResponseDto.fromEntity(updated, timeZone);
+  }
+
+  private async ensureFamilyChild(
+    familyId: string,
+    childId: string | null | undefined,
+    prisma: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<void> {
+    if (childId === undefined || childId === null) return;
+    const child = await prisma.childProfile.findFirst({ where: { id: childId, familyId } });
+    if (!child) throw new ForbiddenException('Child must belong to the family');
   }
 
   confirm(eventId: string, userId: string): Promise<FamilyEventResponseDto> {

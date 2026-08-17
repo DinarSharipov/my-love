@@ -46,6 +46,7 @@ describe('FamilyEventsService', () => {
   const event: FamilyEvent = {
     id: eventId,
     familyId,
+    childId: null,
     proposedById: creatorId,
     respondedById: partnerId,
     deletedById: null,

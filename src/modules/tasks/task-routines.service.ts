@@ -22,11 +22,13 @@ export class TaskRoutinesService {
   async create(userId: string, dto: CreateTaskRoutineDto): Promise<TaskRoutineResponseDto> {
     const { familyId } = await this.membership.requireMembership(userId);
     if (dto.assignedToId) await this.ensureMember(familyId, dto.assignedToId);
+    if (dto.childId) await this.ensureFamilyChild(familyId, dto.childId);
     const routine = await this.prisma.taskRoutine.create({
       data: {
         familyId,
         createdById: userId,
         assignedToId: dto.assignedToId || null,
+        childId: dto.childId || null,
         title: dto.title,
         description: dto.description || null,
         priority: dto.priority,
@@ -72,6 +74,7 @@ export class TaskRoutinesService {
           familyId,
           createdById: userId,
           assignedToId: routine.assignedToId,
+          childId: routine.childId,
           title: routine.title,
           description: routine.description,
           priority: routine.priority,
@@ -164,6 +167,7 @@ export class TaskRoutinesService {
             familyId: routine.familyId,
             createdById: routine.createdById,
             assignedToId: routine.assignedToId,
+            childId: routine.childId,
             title: routine.title,
             description: routine.description,
             priority: routine.priority,
@@ -206,5 +210,9 @@ export class TaskRoutinesService {
   private async ensureMember(familyId: string, userId: string): Promise<void> {
     const member = await this.prisma.familyMember.findFirst({ where: { familyId, userId } });
     if (!member) throw new ForbiddenException('Assigned user must belong to the family');
+  }
+  private async ensureFamilyChild(familyId: string, childId: string): Promise<void> {
+    const child = await this.prisma.childProfile.findFirst({ where: { id: childId, familyId } });
+    if (!child) throw new ForbiddenException('Routine child must belong to the family');
   }
 }

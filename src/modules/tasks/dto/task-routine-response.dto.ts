@@ -5,6 +5,7 @@ export class TaskRoutineResponseDto {
   @ApiProperty({ format: 'uuid' }) familyId: string;
   @ApiProperty({ format: 'uuid' }) createdById: string;
   @ApiPropertyOptional({ format: 'uuid', nullable: true }) assignedToId: string | null;
+  @ApiPropertyOptional({ format: 'uuid', nullable: true }) childId: string | null;
   @ApiProperty() title: string;
   @ApiPropertyOptional({ nullable: true }) description: string | null;
   @ApiProperty({ enum: TaskPriority }) priority: TaskPriority;

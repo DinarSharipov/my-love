@@ -36,4 +36,8 @@ export class CreateTaskDto {
   @IsOptional()
   @IsUUID()
   assignedToId?: string;
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @IsUUID()
+  childId?: string;
 }

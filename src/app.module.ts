@@ -18,6 +18,7 @@ import { MaintenanceModule } from './common/maintenance/maintenance.module';
 import { AuditModule } from './common/audit/audit.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { ShoppingModule } from './modules/shopping/shopping.module';
+import { MealsModule } from './modules/meals/meals.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { NotificationProducerModule } from './common/notifications/notification-producer.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
@@ -61,6 +62,7 @@ import { WellbeingModule } from './modules/wellbeing/wellbeing.module';
     AuditModule,
     TasksModule,
     ShoppingModule,
+    MealsModule,
     NotificationsModule,
     NotificationProducerModule,
     AuthModule,

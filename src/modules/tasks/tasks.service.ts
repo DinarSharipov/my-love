@@ -26,6 +26,7 @@ export class TasksService {
   async create(userId: string, dto: CreateTaskDto): Promise<TaskResponseDto> {
     const { familyId } = await this.membership.requireMembership(userId);
     if (dto.assignedToId) await this.ensureFamilyMember(familyId, dto.assignedToId);
+    if (dto.childId) await this.ensureFamilyChild(familyId, dto.childId);
     const task = await this.prisma.task.create({
       data: {
         familyId,
@@ -35,6 +36,7 @@ export class TasksService {
         dueAt: dto.dueAt ? new Date(dto.dueAt) : null,
         priority: dto.priority,
         assignedToId: dto.assignedToId || null,
+        childId: dto.childId || null,
       },
     });
     await this.audit.record({
@@ -81,6 +83,7 @@ export class TasksService {
   ): Promise<TaskResponseDto> {
     const { familyId } = await this.membership.requireMembership(userId);
     if (dto.assignedToId) await this.ensureFamilyMember(familyId, dto.assignedToId);
+    if (dto.childId) await this.ensureFamilyChild(familyId, dto.childId);
     const current = await this.prisma.task.findFirst({
       where: { id, familyId, status: { not: TaskStatus.ARCHIVED } },
     });
@@ -98,6 +101,7 @@ export class TasksService {
         dueAt: dto.dueAt === undefined ? undefined : dto.dueAt ? new Date(dto.dueAt) : null,
         priority: dto.priority,
         assignedToId: dto.assignedToId === undefined ? undefined : dto.assignedToId || null,
+        childId: dto.childId === undefined ? undefined : dto.childId || null,
         version: { increment: 1 },
       },
     });
@@ -188,5 +192,9 @@ export class TasksService {
   private async ensureFamilyMember(familyId: string, userId: string): Promise<void> {
     const member = await this.prisma.familyMember.findFirst({ where: { familyId, userId } });
     if (!member) throw new ForbiddenException('Assigned user must belong to the family');
+  }
+  private async ensureFamilyChild(familyId: string, childId: string): Promise<void> {
+    const child = await this.prisma.childProfile.findFirst({ where: { id: childId, familyId } });
+    if (!child) throw new ForbiddenException('Child must belong to the family');
   }
 }
