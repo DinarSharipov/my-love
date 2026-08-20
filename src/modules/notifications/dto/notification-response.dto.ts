@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Notification } from '@prisma/client';
 import { PaginationResponseDto } from '../../../common/dto/pagination-response.dto';
 
 export class NotificationResponseDto {
@@ -10,6 +11,19 @@ export class NotificationResponseDto {
   @ApiPropertyOptional({ nullable: true }) body: string | null;
   @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true }) readAt: Date | null;
   @ApiProperty({ type: String, format: 'date-time' }) createdAt: Date;
+
+  static fromEntity(notification: Notification): NotificationResponseDto {
+    return {
+      id: notification.id,
+      userId: notification.userId,
+      familyId: notification.familyId,
+      type: notification.type,
+      title: notification.title,
+      body: notification.body,
+      readAt: notification.readAt,
+      createdAt: notification.createdAt,
+    };
+  }
 }
 
 export class PaginatedNotificationsResponseDto extends PaginationResponseDto {

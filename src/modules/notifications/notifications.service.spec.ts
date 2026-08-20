@@ -40,7 +40,18 @@ describe('NotificationsService', () => {
   });
 
   it('returns a stable paginated inbox without changing the legacy list contract', async () => {
-    const rows = [{ id: 'notification-id' }];
+    const rows = [
+      {
+        id: 'notification-id',
+        userId: 'user-id',
+        familyId: 'family-id',
+        type: 'TASK',
+        title: 'Task',
+        body: null,
+        readAt: null,
+        createdAt: new Date('2026-08-16T10:00:00.000Z'),
+      },
+    ];
     const prisma = {
       notification: {
         count: jest.fn().mockReturnValue({}),

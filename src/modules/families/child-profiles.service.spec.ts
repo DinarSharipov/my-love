@@ -71,9 +71,46 @@ describe('ChildProfilesService', () => {
     });
     expect(prisma.childProfile.findFirst).toHaveBeenCalledWith({
       where: { id: 'child-id', familyId: 'family-id' },
-      include: {
-        tasks: { orderBy: [{ createdAt: 'asc' }] },
-        events: { where: { deletedAt: null }, orderBy: [{ scheduledAt: 'asc' }] },
+      select: {
+        id: true,
+        familyId: true,
+        firstName: true,
+        lastName: true,
+        birthDate: true,
+        avatarUrl: true,
+        createdAt: true,
+        updatedAt: true,
+        tasks: {
+          orderBy: [{ createdAt: 'asc' }],
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            dueAt: true,
+            priority: true,
+            status: true,
+            version: true,
+            completedAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+        events: {
+          where: { deletedAt: null },
+          orderBy: [{ scheduledAt: 'asc' }],
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            scheduledAt: true,
+            location: true,
+            status: true,
+            respondedAt: true,
+            version: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
       },
     });
   });

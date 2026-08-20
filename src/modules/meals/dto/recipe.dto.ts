@@ -34,6 +34,31 @@ export class CreateRecipeDto {
   @MaxLength(40, { each: true })
   dietaryLabels?: string[];
 }
+export class UpdateRecipeDto {
+  @ApiPropertyOptional({ maxLength: 160 })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(160)
+  name?: string;
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10000)
+  instructions?: string | null;
+  @ApiPropertyOptional({ type: [RecipeIngredientDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RecipeIngredientDto)
+  ingredients?: RecipeIngredientDto[];
+  @ApiPropertyOptional({ type: [String], maxItems: 12 })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(40, { each: true })
+  dietaryLabels?: string[];
+}
 export class RecipeDietaryLabelResponseDto {
   @ApiProperty() id: string;
   @ApiProperty() label: string;
@@ -47,6 +72,8 @@ export class RecipeResponseDto {
   @ApiProperty() createdById: string;
   @ApiProperty() name: string;
   @ApiPropertyOptional({ nullable: true }) instructions: string | null;
+  @ApiProperty() archived: boolean;
+  @ApiProperty() version: number;
   @ApiProperty({ type: [RecipeIngredientResponseDto] }) ingredients: RecipeIngredientResponseDto[];
   @ApiProperty({ type: [RecipeDietaryLabelResponseDto] })
   dietaryLabels: RecipeDietaryLabelResponseDto[];
@@ -88,6 +115,7 @@ export class MealPlanResponseDto {
   @ApiProperty({ format: 'date' }) plannedFor: Date;
   @ApiProperty() mealSlot: string;
   @ApiProperty() servings: number;
+  @ApiProperty() version: number;
   @ApiProperty({ type: RecipeResponseDto }) recipe: RecipeResponseDto;
   @ApiProperty() createdAt: Date;
   @ApiProperty() updatedAt: Date;

@@ -14,6 +14,7 @@ export class CalendarEntryResponseDto {
   @ApiProperty({ type: String, format: 'date-time' }) startsAt: Date;
   @ApiProperty() status: string;
   @ApiPropertyOptional({ format: 'uuid', nullable: true }) assignedToId: string | null;
+  @ApiPropertyOptional({ format: 'uuid', nullable: true }) childId: string | null;
 }
 
 export class CalendarProjectionResponseDto {

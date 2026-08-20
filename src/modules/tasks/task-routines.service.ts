@@ -11,6 +11,8 @@ import { AuditService } from '../../common/audit/audit.service';
 import { CreateTaskRoutineDto } from './dto/create-task-routine.dto';
 import { TaskRoutineResponseDto } from './dto/task-routine-response.dto';
 import { NotificationProducerService } from '../../common/notifications/notification-producer.service';
+import { VersionConflictException } from '../../common/http/version-conflict.exception';
+import { UpdateTaskRoutineDto } from './dto/update-task-routine.dto';
 @Injectable()
 export class TaskRoutinesService {
   constructor(
@@ -56,10 +58,72 @@ export class TaskRoutinesService {
   async list(userId: string): Promise<TaskRoutineResponseDto[]> {
     const { familyId } = await this.membership.requireMembership(userId);
     const rows = await this.prisma.taskRoutine.findMany({
-      where: { familyId },
+      where: { familyId, active: true },
       orderBy: { nextRunAt: 'asc' },
     });
     return rows.map((row) => TaskRoutineResponseDto.fromEntity(row));
+  }
+
+  async listArchived(userId: string): Promise<TaskRoutineResponseDto[]> {
+    const { familyId } = await this.membership.requireMembership(userId);
+    const rows = await this.prisma.taskRoutine.findMany({
+      where: { familyId, active: false },
+      orderBy: { updatedAt: 'desc' },
+    });
+    return rows.map((row) => TaskRoutineResponseDto.fromEntity(row));
+  }
+  async update(
+    id: string,
+    userId: string,
+    dto: UpdateTaskRoutineDto,
+    expectedVersion?: number,
+  ): Promise<TaskRoutineResponseDto> {
+    const { familyId } = await this.membership.requireMembership(userId);
+    if (dto.assignedToId) await this.ensureMember(familyId, dto.assignedToId);
+    if (dto.childId) await this.ensureFamilyChild(familyId, dto.childId);
+    const current = await this.prisma.taskRoutine.findFirst({
+      where: { id, familyId, active: true },
+    });
+    if (!current) throw new NotFoundException('Task routine not found');
+    const result = await this.prisma.taskRoutine.updateMany({
+      where: {
+        id,
+        familyId,
+        active: true,
+        ...(expectedVersion === undefined ? {} : { version: expectedVersion }),
+      },
+      data: {
+        title: dto.title,
+        description: dto.description === undefined ? undefined : dto.description || null,
+        priority: dto.priority,
+        frequency: dto.frequency,
+        interval: dto.interval,
+        nextRunAt: dto.nextRunAt === undefined ? undefined : new Date(dto.nextRunAt),
+        assignedToId: dto.assignedToId === undefined ? undefined : dto.assignedToId || null,
+        childId: dto.childId === undefined ? undefined : dto.childId || null,
+        version: { increment: 1 },
+      },
+    });
+    if (result.count !== 1) {
+      if (expectedVersion !== undefined) throw new VersionConflictException(expectedVersion);
+      throw new NotFoundException('Task routine not found');
+    }
+    const routine = await this.prisma.taskRoutine.findUniqueOrThrow({ where: { id } });
+    await this.audit.record({
+      actorId: userId,
+      familyId,
+      action: 'task_routine.updated',
+      resourceType: 'task_routine',
+      resourceId: id,
+    });
+    await this.notifications.notifyFamilyMembers({
+      familyId,
+      actorId: userId,
+      type: 'TASK_ROUTINE_UPDATED',
+      title: 'Регулярная задача изменена',
+      body: routine.title,
+    });
+    return TaskRoutineResponseDto.fromEntity(routine);
   }
   async generate(
     id: string,
@@ -115,13 +179,66 @@ export class TaskRoutinesService {
     });
     return { taskId: result.taskId, routine: TaskRoutineResponseDto.fromEntity(result.routine) };
   }
-  async archive(id: string, userId: string): Promise<void> {
+  async restore(
+    id: string,
+    userId: string,
+    expectedVersion?: number,
+  ): Promise<TaskRoutineResponseDto> {
     const { familyId } = await this.membership.requireMembership(userId);
+    const current = await this.prisma.taskRoutine.findFirst({
+      where: { id, familyId, active: false },
+    });
+    if (!current) throw new NotFoundException('Task routine not found');
     const result = await this.prisma.taskRoutine.updateMany({
+      where: {
+        id,
+        familyId,
+        active: false,
+        ...(expectedVersion === undefined ? {} : { version: expectedVersion }),
+      },
+      data: { active: true, version: { increment: 1 } },
+    });
+    if (result.count !== 1) {
+      if (expectedVersion !== undefined) throw new VersionConflictException(expectedVersion);
+      throw new NotFoundException('Task routine not found');
+    }
+    const routine = await this.prisma.taskRoutine.findUniqueOrThrow({ where: { id } });
+    await this.audit.record({
+      actorId: userId,
+      familyId,
+      action: 'task_routine.restored',
+      resourceType: 'task_routine',
+      resourceId: id,
+    });
+    await this.notifications.notifyFamilyMembers({
+      familyId,
+      actorId: userId,
+      type: 'TASK_ROUTINE_RESTORED',
+      title: 'Регулярная задача восстановлена',
+      body: routine.title,
+    });
+    return TaskRoutineResponseDto.fromEntity(routine);
+  }
+
+  async archive(id: string, userId: string, expectedVersion?: number): Promise<void> {
+    const { familyId } = await this.membership.requireMembership(userId);
+    const current = await this.prisma.taskRoutine.findFirst({
       where: { id, familyId, active: true },
+    });
+    if (!current) throw new NotFoundException('Task routine not found');
+    const result = await this.prisma.taskRoutine.updateMany({
+      where: {
+        id,
+        familyId,
+        active: true,
+        ...(expectedVersion === undefined ? {} : { version: expectedVersion }),
+      },
       data: { active: false, version: { increment: 1 } },
     });
-    if (result.count !== 1) throw new NotFoundException('Task routine not found');
+    if (result.count !== 1) {
+      if (expectedVersion !== undefined) throw new VersionConflictException(expectedVersion);
+      throw new NotFoundException('Task routine not found');
+    }
     await this.audit.record({
       actorId: userId,
       familyId,
@@ -156,7 +273,10 @@ export class TaskRoutinesService {
           },
         });
         if (!routine) return null;
-        const next = this.nextRun(routine.nextRunAt, routine.frequency, routine.interval);
+        let next = this.nextRun(routine.nextRunAt, routine.frequency, routine.interval);
+        while (next <= now) {
+          next = this.nextRun(next, routine.frequency, routine.interval);
+        }
         const claimed = await tx.taskRoutine.updateMany({
           where: { id: routine.id, active: true, version: routine.version },
           data: { nextRunAt: next, version: { increment: 1 } },
@@ -171,7 +291,7 @@ export class TaskRoutinesService {
             title: routine.title,
             description: routine.description,
             priority: routine.priority,
-            dueAt: routine.nextRunAt,
+            dueAt: now,
           },
         });
         await this.audit.record(

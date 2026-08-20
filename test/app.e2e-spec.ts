@@ -844,4 +844,77 @@ describe('API security regression (e2e)', () => {
       .set('If-Match', String(item.version))
       .expect(201);
   });
+
+  it('keeps meal recipes, plans, and shopping generation inside the family boundary', async () => {
+    const [alice, bob, outsider] = await Promise.all([
+      register('MealsAlice'),
+      register('MealsBob'),
+      register('MealsOutsider'),
+    ]);
+    await createFamily(alice, bob);
+
+    const recipe = await request(httpServer)
+      .post('/api/v1/families/me/recipes')
+      .set(auth(alice.accessToken))
+      .send({
+        name: 'Family pasta',
+        ingredients: [{ name: 'Tomato', quantity: '2 pcs' }],
+        dietaryLabels: [' Vegetarian ', 'vegetarian'],
+      })
+      .expect(201);
+    const recipeId = (recipe.body as { id: string; dietaryLabels: Array<{ label: string }> }).id;
+    expect((recipe.body as { dietaryLabels: Array<{ label: string }> }).dietaryLabels).toEqual([
+      expect.objectContaining({ label: 'vegetarian' }),
+    ]);
+
+    const plan = await request(httpServer)
+      .post('/api/v1/families/me/recipes/plans')
+      .set(auth(alice.accessToken))
+      .send({ recipeId, plannedFor: '2026-08-20', mealSlot: 'dinner' })
+      .expect(201);
+    const planId = (plan.body as { id: string }).id;
+
+    await request(httpServer)
+      .get('/api/v1/families/me/recipes')
+      .set(auth(outsider.accessToken))
+      .expect(200)
+      .expect([]);
+    await request(httpServer)
+      .post('/api/v1/families/me/recipes/plans')
+      .set(auth(outsider.accessToken))
+      .send({ recipeId, plannedFor: '2026-08-21', mealSlot: 'lunch' })
+      .expect(404);
+    await request(httpServer)
+      .patch(`/api/v1/families/me/recipes/plans/${planId}`)
+      .set(auth(outsider.accessToken))
+      .send({ servings: 4 })
+      .expect(404);
+
+    const outsiderList = await request(httpServer)
+      .post('/api/v1/families/me/shopping-lists')
+      .set(auth(outsider.accessToken))
+      .send({ name: 'Outsider groceries' })
+      .expect(201);
+    await request(httpServer)
+      .post(`/api/v1/families/me/recipes/plans/${planId}/generate-shopping`)
+      .set(auth(outsider.accessToken))
+      .send({ listId: (outsiderList.body as { id: string }).id })
+      .expect(404);
+
+    const archivedRecipe = await request(httpServer)
+      .post('/api/v1/families/me/recipes')
+      .set(auth(alice.accessToken))
+      .send({ name: 'Archived recipe', ingredients: [{ name: 'Salt' }] })
+      .expect(201);
+    const archivedRecipeId = (archivedRecipe.body as { id: string }).id;
+    await request(httpServer)
+      .delete(`/api/v1/families/me/recipes/${archivedRecipeId}`)
+      .set(auth(alice.accessToken))
+      .expect(204);
+    await request(httpServer)
+      .post('/api/v1/families/me/recipes/plans')
+      .set(auth(alice.accessToken))
+      .send({ recipeId: archivedRecipeId, plannedFor: '2026-08-22', mealSlot: 'breakfast' })
+      .expect(404);
+  });
 });

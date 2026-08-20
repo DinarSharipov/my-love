@@ -53,6 +53,17 @@ export class FinancialCategoriesService {
     });
   }
 
+  async archived(userId: string, kind?: FinancialCategoryKind) {
+    const context = await this.membership.requireMembership(userId);
+    if (kind && !Object.values(FinancialCategoryKind).includes(kind)) {
+      throw new BadRequestException('Invalid financial category kind');
+    }
+    return this.prisma.financialCategory.findMany({
+      where: { familyId: context.familyId, archivedAt: { not: null }, ...(kind ? { kind } : {}) },
+      orderBy: [{ kind: 'asc' }, { name: 'asc' }],
+    });
+  }
+
   async update(
     userId: string,
     categoryId: string,
@@ -106,6 +117,39 @@ export class FinancialCategoriesService {
         },
         tx,
       );
+    });
+  }
+
+  async restore(userId: string, categoryId: string, expectedVersion?: number) {
+    const context = await this.membership.requireMembership(userId);
+    const category = await this.prisma.financialCategory.findFirst({
+      where: { id: categoryId, familyId: context.familyId, archivedAt: { not: null } },
+    });
+    if (!category) throw new NotFoundException('Financial category not found');
+    this.requireManage(category, userId, context.role);
+    return this.prisma.$transaction(async (tx) => {
+      const result = await tx.financialCategory.updateMany({
+        where: {
+          id: category.id,
+          version: expectedVersion ?? category.version,
+          archivedAt: { not: null },
+        },
+        data: { archivedAt: null, version: { increment: 1 } },
+      });
+      if (result.count !== 1)
+        throw new ConflictException('Financial category was changed concurrently');
+      const restored = await tx.financialCategory.findUniqueOrThrow({ where: { id: category.id } });
+      await this.audit.record(
+        {
+          actorId: userId,
+          familyId: context.familyId,
+          action: 'financial_category.restored',
+          resourceType: 'financial_category',
+          resourceId: category.id,
+        },
+        tx,
+      );
+      return restored;
     });
   }
 

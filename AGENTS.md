@@ -31,6 +31,12 @@ Backend for a family-management app: household tasks, budgets, events, reminders
 
 - Keep changes scoped, backward-compatible where practical, and test business rules plus authorization/edge cases.
 - Before completion run relevant checks; normally `npm run lint`, `npm test`, and `npm run build`. Run `npm run prisma:generate` after Prisma schema changes.
+- CI/push policy: E2E and staging/stand testing are not required gates for pushing to `main`. Run the relevant checks locally (normally format check, lint, unit tests, build, and Prisma validation/generation when applicable); push to `main` only after those local checks pass. Keep E2E scripts available for optional local investigation, but do not add them as a required `main` workflow gate.
+
+## Communication
+
+- Communicate with the user in Russian: final answers, explanations, and progress updates must be in Russian.
+- Use Distill only to compress command output and conserve tokens; it must not change the language of user-facing communication.
 
 ## Continuity
 

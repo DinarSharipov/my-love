@@ -378,6 +378,7 @@ model MealPlan {
   plannedFor  DateTime @map("planned_for") @db.Date
   mealSlot    String   @map("meal_slot") @db.VarChar(40)
   servings    Int      @default(1)
+  version     Int      @default(1)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
   family      Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
@@ -396,6 +397,7 @@ model Recipe {
   name          String               @db.VarChar(160)
   instructions  String?              @db.Text
   archived      Boolean              @default(false)
+  version       Int                  @default(1)
   createdAt     DateTime             @default(now()) @map("created_at")
   updatedAt     DateTime             @updatedAt @map("updated_at")
   family        Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)

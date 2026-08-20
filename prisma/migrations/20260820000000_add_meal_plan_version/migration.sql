@@ -1,0 +1,2 @@
+ALTER TABLE "meal_plans"
+ADD COLUMN "version" INTEGER NOT NULL DEFAULT 1;

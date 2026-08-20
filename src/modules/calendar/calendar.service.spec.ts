@@ -21,6 +21,7 @@ describe('CalendarService', () => {
       name: 'Event',
       scheduledAt: new Date('2026-08-16T12:00:00.000Z'),
       status: 'CONFIRMED',
+      childId: 'child-event-id',
     };
     const task = {
       id: 'task-id',
@@ -28,6 +29,7 @@ describe('CalendarService', () => {
       dueAt: new Date('2026-08-16T10:00:00.000Z'),
       status: 'OPEN',
       assignedToId: null,
+      childId: 'child-task-id',
     };
     const reminder = {
       id: 'reminder-id',
@@ -65,6 +67,11 @@ describe('CalendarService', () => {
       timeZone: 'Europe/Moscow',
       truncated: false,
     });
+    expect(result.data).toEqual([
+      expect.objectContaining({ id: 'task-reminder:reminder-id', childId: null }),
+      expect.objectContaining({ id: 'task:task-id', childId: 'child-task-id' }),
+      expect.objectContaining({ id: 'event:event-id', childId: 'child-event-id' }),
+    ]);
     expect(prisma.taskReminder.findMany).toHaveBeenCalledWith({
       where: {
         userId: 'user-id',

@@ -32,6 +32,11 @@ export class ShoppingController {
   ) {
     return this.shopping.lists(u.id);
   }
+  @Get('archived') @ApiOkResponse({ type: [ShoppingListResponseDto] }) archived(
+    @CurrentUser() u: AuthenticatedUser,
+  ) {
+    return this.shopping.archivedLists(u.id);
+  }
   @Post() @ApiOkResponse({ type: ShoppingListResponseDto }) create(
     @CurrentUser() u: AuthenticatedUser,
     @Body() dto: CreateShoppingListDto,
@@ -64,7 +69,15 @@ export class ShoppingController {
   @Delete(':listId') @HttpCode(HttpStatus.NO_CONTENT) @ApiNoContentResponse() archive(
     @CurrentUser() u: AuthenticatedUser,
     @Param('listId') id: string,
+    @ConcurrencyVersion() expectedVersion?: number,
   ) {
-    return this.shopping.archiveList(u.id, id);
+    return this.shopping.archiveList(u.id, id, expectedVersion);
+  }
+  @Post(':listId/restore') @ApiOkResponse({ type: ShoppingListResponseDto }) restore(
+    @CurrentUser() u: AuthenticatedUser,
+    @Param('listId') id: string,
+    @ConcurrencyVersion() expectedVersion?: number,
+  ) {
+    return this.shopping.restoreList(u.id, id, expectedVersion);
   }
 }

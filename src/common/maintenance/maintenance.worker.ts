@@ -33,13 +33,23 @@ export class MaintenanceWorker implements OnModuleInit, OnModuleDestroy {
   private async tick(): Promise<void> {
     if (this.running) return;
     this.running = true;
+    const startedAt = Date.now();
     try {
-      await this.maintenance.cleanupExpiredSecurityArtifacts();
-      await this.maintenance.generateDueTaskRoutines();
-      await this.maintenance.generateDueRecurringPaymentForecasts();
+      const cleanup = await this.maintenance.cleanupExpiredSecurityArtifacts();
+      const taskRoutines = await this.maintenance.generateDueTaskRoutines();
+      const recurringPaymentForecasts =
+        await this.maintenance.generateDueRecurringPaymentForecasts();
       if (this.config.get<boolean>('RETENTION_WORKER_ENABLED', false)) {
-        await this.maintenance.anonymizeExpiredAccounts();
+        const retention = await this.maintenance.anonymizeExpiredAccounts();
+        this.logger.log({ event: 'maintenance_retention_completed', ...retention });
       }
+      this.logger.log({
+        event: 'maintenance_cycle_completed',
+        durationMs: Date.now() - startedAt,
+        cleanup,
+        taskRoutines,
+        recurringPaymentForecasts,
+      });
     } catch (error) {
       this.logger.error({
         event: 'maintenance_worker_error',
@@ -53,8 +63,14 @@ export class MaintenanceWorker implements OnModuleInit, OnModuleDestroy {
   private async deliverReminders(): Promise<void> {
     if (this.remindersRunning) return;
     this.remindersRunning = true;
+    const startedAt = Date.now();
     try {
-      await this.maintenance.deliverDueReminders();
+      const result = await this.maintenance.deliverDueReminders();
+      this.logger.log({
+        event: 'maintenance_reminders_completed',
+        durationMs: Date.now() - startedAt,
+        ...result,
+      });
     } catch (error) {
       this.logger.error({
         event: 'maintenance_reminders_error',

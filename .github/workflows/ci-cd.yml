@@ -31,7 +31,6 @@ jobs:
       - run: npm run format:check
       - run: npm run lint
       - run: npm test -- --passWithNoTests
-      - run: npm run test:e2e:verify
       - run: npm run build
       - run: npm audit --omit=dev
 

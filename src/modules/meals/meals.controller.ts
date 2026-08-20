@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ConcurrencyVersion } from '../../common/decorators/concurrency-version.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import {
@@ -23,6 +24,7 @@ import {
   MealPlanResponseDto,
   RecipeResponseDto,
   UpdateMealPlanDto,
+  UpdateRecipeDto,
 } from './dto/recipe.dto';
 import { MealsService } from './meals.service';
 @ApiTags('meals')
@@ -34,19 +36,43 @@ export class MealsController {
   @Get() @ApiOkResponse({ type: [RecipeResponseDto] }) list(@CurrentUser() u: AuthenticatedUser) {
     return this.meals.list(u.id);
   }
+  @Get('archived') @ApiOkResponse({ type: [RecipeResponseDto] }) listArchived(
+    @CurrentUser() u: AuthenticatedUser,
+  ) {
+    return this.meals.listArchived(u.id);
+  }
   @Post() @ApiOkResponse({ type: RecipeResponseDto }) create(
     @CurrentUser() u: AuthenticatedUser,
     @Body() dto: CreateRecipeDto,
   ) {
     return this.meals.create(u.id, dto);
   }
+  @Patch(':id') @ApiOkResponse({ type: RecipeResponseDto }) update(
+    @CurrentUser() u: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateRecipeDto,
+    @ConcurrencyVersion() expectedVersion?: number,
+  ) {
+    return this.meals.update(u.id, id, dto, expectedVersion);
+  }
   @Delete(':id') @HttpCode(HttpStatus.NO_CONTENT) @ApiNoContentResponse() archive(
     @CurrentUser() u: AuthenticatedUser,
     @Param('id') id: string,
+    @ConcurrencyVersion() expectedVersion?: number,
   ) {
-    return this.meals.archive(u.id, id);
+    return this.meals.archive(u.id, id, expectedVersion);
   }
-  @Post('plans') createPlan(@CurrentUser() u: AuthenticatedUser, @Body() dto: CreateMealPlanDto) {
+  @Post(':id/restore') @ApiOkResponse({ type: RecipeResponseDto }) restore(
+    @CurrentUser() u: AuthenticatedUser,
+    @Param('id') id: string,
+    @ConcurrencyVersion() expectedVersion?: number,
+  ) {
+    return this.meals.restore(u.id, id, expectedVersion);
+  }
+  @Post('plans') @ApiOkResponse({ type: MealPlanResponseDto }) createPlan(
+    @CurrentUser() u: AuthenticatedUser,
+    @Body() dto: CreateMealPlanDto,
+  ) {
     return this.meals.createPlan(u.id, dto);
   }
   @Get('plans') @ApiOkResponse({ type: [MealPlanResponseDto] }) listPlans(
@@ -55,12 +81,19 @@ export class MealsController {
   ) {
     return this.meals.listPlans(u.id, query.from, query.to);
   }
-  @Patch('plans/:id') updatePlan(
+  @Patch('plans/:id') @ApiOkResponse({ type: MealPlanResponseDto }) updatePlan(
     @CurrentUser() u: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: UpdateMealPlanDto,
+    @ConcurrencyVersion() expectedVersion?: number,
   ) {
-    return this.meals.updatePlan(u.id, id, dto);
+    return this.meals.updatePlan(u.id, id, dto, expectedVersion);
+  }
+  @Delete('plans/:id') @HttpCode(HttpStatus.NO_CONTENT) @ApiNoContentResponse() deletePlan(
+    @CurrentUser() u: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.meals.deletePlan(u.id, id);
   }
   @Post('plans/:id/generate-shopping') generateShopping(
     @CurrentUser() u: AuthenticatedUser,

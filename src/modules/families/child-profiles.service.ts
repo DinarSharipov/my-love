@@ -33,9 +33,46 @@ export class ChildProfilesService {
     const { familyId } = await this.membership.requireMembership(userId);
     const child = await this.prisma.childProfile.findFirst({
       where: { id, familyId },
-      include: {
-        tasks: { orderBy: [{ createdAt: 'asc' }] },
-        events: { where: { deletedAt: null }, orderBy: [{ scheduledAt: 'asc' }] },
+      select: {
+        id: true,
+        familyId: true,
+        firstName: true,
+        lastName: true,
+        birthDate: true,
+        avatarUrl: true,
+        createdAt: true,
+        updatedAt: true,
+        tasks: {
+          orderBy: [{ createdAt: 'asc' }],
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            dueAt: true,
+            priority: true,
+            status: true,
+            version: true,
+            completedAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+        events: {
+          where: { deletedAt: null },
+          orderBy: [{ scheduledAt: 'asc' }],
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            scheduledAt: true,
+            location: true,
+            status: true,
+            respondedAt: true,
+            version: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
       },
     });
     if (!child) throw new NotFoundException('The child profile does not exist');

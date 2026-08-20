@@ -20,6 +20,14 @@ export class ShoppingService {
       orderBy: { updatedAt: 'desc' },
     });
   }
+  async archivedLists(userId: string) {
+    const { familyId } = await this.membership.requireMembership(userId);
+    return this.prisma.shoppingList.findMany({
+      where: { familyId, archived: true },
+      include: { items: { orderBy: [{ checked: 'asc' }, { createdAt: 'asc' }] } },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
   async createList(userId: string, dto: CreateShoppingListDto) {
     const { familyId } = await this.membership.requireMembership(userId);
     const list = await this.prisma.shoppingList.create({
@@ -116,13 +124,22 @@ export class ShoppingService {
     });
     return updated;
   }
-  async archiveList(userId: string, listId: string) {
+  async archiveList(userId: string, listId: string, expectedVersion?: number) {
     const { familyId } = await this.membership.requireMembership(userId);
     const result = await this.prisma.shoppingList.updateMany({
-      where: { id: listId, familyId, archived: false },
+      where: {
+        id: listId,
+        familyId,
+        archived: false,
+        ...(expectedVersion === undefined ? {} : { version: expectedVersion }),
+      },
       data: { archived: true, version: { increment: 1 } },
     });
-    if (!result.count) throw new NotFoundException('Shopping list not found');
+    if (!result.count) {
+      const list = await this.prisma.shoppingList.findFirst({ where: { id: listId, familyId } });
+      if (!list) throw new NotFoundException('Shopping list not found');
+      throw new ConflictException('Shopping list was changed concurrently');
+    }
     await this.audit.record({
       actorId: userId,
       familyId,
@@ -136,5 +153,34 @@ export class ShoppingService {
       type: 'SHOPPING_LIST_ARCHIVED',
       title: 'Список покупок архивирован',
     });
+  }
+  async restoreList(userId: string, listId: string, expectedVersion?: number) {
+    const { familyId } = await this.membership.requireMembership(userId);
+    const result = await this.prisma.shoppingList.updateMany({
+      where: {
+        id: listId,
+        familyId,
+        archived: true,
+        ...(expectedVersion === undefined ? {} : { version: expectedVersion }),
+      },
+      data: { archived: false, version: { increment: 1 } },
+    });
+    if (!result.count) {
+      const list = await this.prisma.shoppingList.findFirst({ where: { id: listId, familyId } });
+      if (!list) throw new NotFoundException('Shopping list not found');
+      throw new ConflictException('Shopping list was changed concurrently');
+    }
+    const restored = await this.prisma.shoppingList.findUniqueOrThrow({
+      where: { id: listId },
+      include: { items: { orderBy: [{ checked: 'asc' }, { createdAt: 'asc' }] } },
+    });
+    await this.audit.record({
+      actorId: userId,
+      familyId,
+      action: 'shopping_list.restored',
+      resourceType: 'shopping_list',
+      resourceId: listId,
+    });
+    return restored;
   }
 }

@@ -3,6 +3,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { FamilyMembershipService } from '../family-members/family-membership.service';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { paginationMeta } from '../../common/dto/pagination-response.dto';
+import { NotificationResponseDto } from './dto/notification-response.dto';
 @Injectable()
 export class NotificationsService {
   constructor(
@@ -11,11 +12,12 @@ export class NotificationsService {
   ) {}
   async list(userId: string) {
     const { familyId } = await this.membership.requireMembership(userId);
-    return this.prisma.notification.findMany({
+    const notifications = await this.prisma.notification.findMany({
       where: { userId, OR: [{ familyId }, { familyId: null }] },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
+    return notifications.map((notification) => NotificationResponseDto.fromEntity(notification));
   }
   async listPaginated(userId: string, query: PaginationQueryDto) {
     const { familyId } = await this.membership.requireMembership(userId);
@@ -30,7 +32,7 @@ export class NotificationsService {
       }),
     ]);
     return {
-      data: notifications,
+      data: notifications.map((notification) => NotificationResponseDto.fromEntity(notification)),
       ...paginationMeta(total, query.page, query.limit),
     };
   }

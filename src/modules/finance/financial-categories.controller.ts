@@ -49,6 +49,12 @@ export class FinancialCategoriesController {
     return this.categories.list(user.id, kind);
   }
 
+  @Get('archived')
+  @ApiOkResponse({ type: [FinancialCategoryResponseDto] })
+  archived(@CurrentUser() user: AuthenticatedUser, @Query('kind') kind?: FinancialCategoryKind) {
+    return this.categories.archived(user.id, kind);
+  }
+
   @Patch(':id')
   @ApiOkResponse({ type: FinancialCategoryResponseDto })
   update(
@@ -69,5 +75,15 @@ export class FinancialCategoriesController {
     @ConcurrencyVersion() version?: number,
   ) {
     return this.categories.archive(user.id, id, version);
+  }
+
+  @Post(':id/restore')
+  @ApiOkResponse({ type: FinancialCategoryResponseDto })
+  restore(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @ConcurrencyVersion() version?: number,
+  ) {
+    return this.categories.restore(user.id, id, version);
   }
 }

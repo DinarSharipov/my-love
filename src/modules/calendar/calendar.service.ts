@@ -32,7 +32,7 @@ export class CalendarService {
           deletedAt: null,
           scheduledAt: { gte: from, lt: to },
         },
-        select: { id: true, name: true, scheduledAt: true, status: true },
+        select: { id: true, name: true, scheduledAt: true, status: true, childId: true },
         orderBy: [{ scheduledAt: 'asc' }, { id: 'asc' }],
         take: MAX_ENTRIES + 1,
       }),
@@ -42,7 +42,14 @@ export class CalendarService {
           status: { not: TaskStatus.ARCHIVED },
           dueAt: { gte: from, lt: to },
         },
-        select: { id: true, title: true, dueAt: true, status: true, assignedToId: true },
+        select: {
+          id: true,
+          title: true,
+          dueAt: true,
+          status: true,
+          assignedToId: true,
+          childId: true,
+        },
         orderBy: [{ dueAt: 'asc' }, { id: 'asc' }],
         take: MAX_ENTRIES + 1,
       }),
@@ -67,6 +74,7 @@ export class CalendarService {
         startsAt: event.scheduledAt,
         status: event.status,
         assignedToId: null,
+        childId: event.childId,
       })),
       ...tasks.map((task) => ({
         id: `task:${task.id}`,
@@ -76,6 +84,7 @@ export class CalendarService {
         startsAt: task.dueAt as Date,
         status: task.status,
         assignedToId: task.assignedToId,
+        childId: task.childId,
       })),
       ...reminders.map((reminder) => ({
         id: `task-reminder:${reminder.id}`,
@@ -85,6 +94,7 @@ export class CalendarService {
         startsAt: reminder.remindAt,
         status: reminder.sentAt ? 'SENT' : 'SCHEDULED',
         assignedToId: userId,
+        childId: null,
       })),
     ].sort((left, right) =>
       left.startsAt.getTime() === right.startsAt.getTime()
