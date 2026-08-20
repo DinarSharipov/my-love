@@ -51,6 +51,11 @@ export class FinancialGoalsController {
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.goals.list(user.id);
   }
+  @Get('archived')
+  @ApiOkResponse({ type: [FinancialGoalResponseDto] })
+  archived(@CurrentUser() user: AuthenticatedUser) {
+    return this.goals.listArchived(user.id);
+  }
 
   @Patch(':id')
   @ApiOkResponse({ type: FinancialGoalResponseDto })
@@ -88,6 +93,15 @@ export class FinancialGoalsController {
     @ConcurrencyVersion() version?: number,
   ) {
     return this.goals.archive(user.id, id, version);
+  }
+  @Post(':id/restore')
+  @ApiOkResponse({ type: FinancialGoalResponseDto })
+  restore(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @ConcurrencyVersion() version?: number,
+  ) {
+    return this.goals.restore(user.id, id, version);
   }
 
   private requiredKey(key: string | undefined): string {

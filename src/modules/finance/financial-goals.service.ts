@@ -99,6 +99,25 @@ export class FinancialGoalsService {
     return goals.map((goal) => this.serialize(goal, balances.get(goal.walletId) ?? 0n));
   }
 
+  async listArchived(userId: string) {
+    const context = await this.membership.requireMembership(userId);
+    const goals = await this.prisma.financialGoal.findMany({
+      where: {
+        familyId: context.familyId,
+        archivedAt: { not: null },
+        wallet: { archivedAt: null, ...this.wallets.visibleTo(userId, context.role) },
+      },
+      include: goalInclude,
+      orderBy: { archivedAt: 'desc' },
+    });
+    const visibleWhere = await this.history.visibleWhere(userId, context.familyId, context.role);
+    const balances = await this.balances(
+      goals.map((goal) => goal.walletId),
+      visibleWhere,
+    );
+    return goals.map((goal) => this.serialize(goal, balances.get(goal.walletId) ?? 0n));
+  }
+
   async update(userId: string, id: string, dto: UpdateFinancialGoalDto, expectedVersion?: number) {
     if (!Object.keys(dto).length)
       throw new BadRequestException('At least one field must be provided');
@@ -262,6 +281,43 @@ export class FinancialGoalsService {
         },
         tx,
       );
+    });
+  }
+
+  async restore(userId: string, id: string, expectedVersion?: number) {
+    const context = await this.membership.requireMembership(userId);
+    const goal = await this.prisma.financialGoal.findFirst({
+      where: { id, familyId: context.familyId, archivedAt: { not: null } },
+      include: goalInclude,
+    });
+    if (!goal || !this.canManage(goal.wallet, userId, context.role))
+      throw new NotFoundException('Financial goal not found');
+    return this.prisma.$transaction(async (tx) => {
+      const result = await tx.financialGoal.updateMany({
+        where: {
+          id: goal.id,
+          archivedAt: { not: null },
+          version: expectedVersion ?? goal.version,
+          wallet: { archivedAt: null },
+        },
+        data: { archivedAt: null, version: { increment: 1 } },
+      });
+      if (result.count !== 1) throw new ConflictException('Financial goal cannot be restored');
+      const restored = await tx.financialGoal.findUniqueOrThrow({
+        where: { id: goal.id },
+        include: goalInclude,
+      });
+      await this.audit.record(
+        {
+          actorId: userId,
+          familyId: context.familyId,
+          action: 'financial_goal.restored',
+          resourceType: 'financial_goal',
+          resourceId: goal.id,
+        },
+        tx,
+      );
+      return this.serialize(restored, await this.balance(tx, goal.walletId));
     });
   }
 

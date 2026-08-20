@@ -45,6 +45,12 @@ export class WalletsController {
     return this.wallets.list(user.id);
   }
 
+  @Get('archived')
+  @ApiOkResponse({ type: [WalletResponseDto] })
+  archived(@CurrentUser() user: AuthenticatedUser) {
+    return this.wallets.archived(user.id);
+  }
+
   @Get(':id')
   @ApiOkResponse({ type: WalletResponseDto })
   get(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
@@ -71,5 +77,15 @@ export class WalletsController {
     @ConcurrencyVersion() expectedVersion?: number,
   ) {
     return this.wallets.archive(user.id, id, expectedVersion);
+  }
+
+  @Post(':id/restore')
+  @ApiOkResponse({ type: WalletResponseDto })
+  restore(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @ConcurrencyVersion() expectedVersion?: number,
+  ) {
+    return this.wallets.restore(user.id, id, expectedVersion);
   }
 }

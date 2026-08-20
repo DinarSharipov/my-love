@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { WellbeingService } from './wellbeing.service';
 
 describe('WellbeingService', () => {
@@ -19,6 +19,8 @@ describe('WellbeingService', () => {
       deleteMany: jest.fn(),
     },
     wellbeingConsentGrant: {
+      findMany: jest.fn(),
+      upsert: jest.fn(),
       deleteMany: jest.fn(),
     },
     wellbeingGratitude: {
@@ -101,6 +103,38 @@ describe('WellbeingService', () => {
 
     await expect(service.list('user-id')).rejects.toThrow('membership required');
     expect(prisma.wellbeingCheckIn.findMany).not.toHaveBeenCalled();
+  });
+
+  it('shares wellbeing data only from active owners in the active family', async () => {
+    membership.requireMembership.mockResolvedValue({ familyId: 'family-id' });
+    prisma.wellbeingConsentGrant.findMany.mockResolvedValue([]);
+
+    await service.sharedWithMe('partner-id');
+
+    expect(prisma.wellbeingConsentGrant.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        where: expect.objectContaining({
+          family: { status: 'ACTIVE' },
+          owner: { isActive: true, familyMember: { familyId: 'family-id' } },
+        }),
+      }),
+    );
+  });
+
+  it('rejects an already expired wellbeing consent', async () => {
+    membership.requireMembership.mockResolvedValue({ familyId: 'family-id' });
+
+    await expect(
+      service.grantConsent('user-id', {
+        recipientId: 'partner-id',
+        scopes: ['mood'],
+        expiresAt: '2020-01-01T00:00:00.000Z',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.familyMember.findFirst).not.toHaveBeenCalled();
+    expect(prisma.wellbeingConsentGrant.upsert).not.toHaveBeenCalled();
   });
 
   it('stores a transparent WHO-5 score and keeps assessment owner-scoped', async () => {

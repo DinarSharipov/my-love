@@ -109,6 +109,43 @@ describe('WalletsService', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
+  it('lists and restores archived wallets within the authenticated family', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const findFirst = jest.fn().mockResolvedValue({
+      id: 'wallet-id',
+      familyId: 'family-id',
+      ownerId: 'current-user',
+      type: WalletType.PERSONAL,
+      version: 2,
+    });
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const findUniqueOrThrow = jest
+      .fn()
+      .mockResolvedValue({ id: 'wallet-id', archivedAt: null, version: 3 });
+    const tx = { wallet: { updateMany, findUniqueOrThrow } };
+    const service = new WalletsService(
+      {
+        wallet: { findMany, findFirst },
+        $transaction: (cb: (client: typeof tx) => unknown) => cb(tx),
+      } as never,
+      { requireMembership: jest.fn().mockResolvedValue(context) } as never,
+      { record: jest.fn().mockResolvedValue(undefined) } as never,
+    );
+
+    await service.archived('current-user');
+    await expect(service.restore('current-user', 'wallet-id', 2)).resolves.toEqual(
+      expect.objectContaining({ archivedAt: null }),
+    );
+    /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ archivedAt: { not: null } }) }),
+    );
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ version: 2 }) }),
+    );
+    /* eslint-enable @typescript-eslint/no-unsafe-assignment */
+  });
+
   it('rejects family visibility for a personal wallet', async () => {
     const service = new WalletsService(
       {} as never,

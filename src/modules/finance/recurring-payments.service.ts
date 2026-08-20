@@ -92,6 +92,19 @@ export class RecurringPaymentsService {
     return payments.map((payment) => this.serialize(payment));
   }
 
+  async listArchived(userId: string) {
+    const { familyId, role } = await this.membership.requireMembership(userId);
+    const payments = await this.prisma.recurringPayment.findMany({
+      where: {
+        familyId,
+        archivedAt: { not: null },
+        wallet: { archivedAt: null, ...this.wallets.visibleTo(userId, role) },
+      },
+      orderBy: [{ archivedAt: 'desc' }, { createdAt: 'asc' }],
+    });
+    return payments.map((payment) => this.serialize(payment));
+  }
+
   async listForecasts(userId: string, id: string) {
     const payment = await this.findVisible(userId, id);
     const forecasts = await this.prisma.recurringPaymentForecast.findMany({
@@ -204,6 +217,40 @@ export class RecurringPaymentsService {
         },
         tx,
       );
+    });
+  }
+
+  async restore(userId: string, id: string, expectedVersion?: number) {
+    const context = await this.membership.requireMembership(userId);
+    const payment = await this.prisma.recurringPayment.findFirst({
+      where: { id, familyId: context.familyId, archivedAt: { not: null } },
+      include: { wallet: true },
+    });
+    if (!payment || !this.canManage(payment.wallet, userId, context.role))
+      throw new NotFoundException('Recurring payment not found');
+    return this.prisma.$transaction(async (tx) => {
+      const result = await tx.recurringPayment.updateMany({
+        where: {
+          id: payment.id,
+          archivedAt: { not: null },
+          version: expectedVersion ?? payment.version,
+          wallet: { archivedAt: null },
+        },
+        data: { active: true, archivedAt: null, version: { increment: 1 } },
+      });
+      if (result.count !== 1) throw new ConflictException('Recurring payment cannot be restored');
+      const restored = await tx.recurringPayment.findUniqueOrThrow({ where: { id: payment.id } });
+      await this.audit.record(
+        {
+          actorId: userId,
+          familyId: context.familyId,
+          action: 'recurring_payment.restored',
+          resourceType: 'recurring_payment',
+          resourceId: payment.id,
+        },
+        tx,
+      );
+      return this.serialize(restored);
     });
   }
 

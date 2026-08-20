@@ -62,6 +62,14 @@ export class WalletsService {
     });
   }
 
+  async archived(userId: string) {
+    const { familyId, role } = await this.membership.requireMembership(userId);
+    return this.prisma.wallet.findMany({
+      where: { familyId, archivedAt: { not: null }, ...this.visibleTo(userId, role) },
+      orderBy: [{ type: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
   async get(userId: string, walletId: string) {
     const { familyId, role } = await this.membership.requireMembership(userId);
     const wallet = await this.prisma.wallet.findFirst({
@@ -139,6 +147,43 @@ export class WalletsService {
         },
         tx,
       );
+    });
+  }
+
+  async restore(userId: string, walletId: string, expectedVersion?: number) {
+    const context = await this.membership.requireMembership(userId);
+    const wallet = await this.prisma.wallet.findFirst({
+      where: { id: walletId, familyId: context.familyId, archivedAt: { not: null } },
+    });
+    const canManage =
+      wallet &&
+      (wallet.ownerId === userId ||
+        (wallet.type === WalletType.FAMILY && context.role === FamilyMemberRole.PARTNER));
+    if (!canManage) throw new NotFoundException('Wallet not found');
+
+    return this.prisma.$transaction(async (tx) => {
+      const result = await tx.wallet.updateMany({
+        where: {
+          id: wallet.id,
+          familyId: context.familyId,
+          archivedAt: { not: null },
+          version: expectedVersion ?? wallet.version,
+        },
+        data: { archivedAt: null, version: { increment: 1 } },
+      });
+      if (result.count !== 1) throw new ConflictException('Wallet was changed concurrently');
+      const restored = await tx.wallet.findUniqueOrThrow({ where: { id: wallet.id } });
+      await this.audit.record(
+        {
+          actorId: userId,
+          familyId: context.familyId,
+          action: 'wallet.restored',
+          resourceType: 'wallet',
+          resourceId: wallet.id,
+        },
+        tx,
+      );
+      return restored;
     });
   }
 

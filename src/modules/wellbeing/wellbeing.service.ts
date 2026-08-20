@@ -74,6 +74,10 @@ export class WellbeingService {
     if (dto.recipientId === userId || dto.scopes.length === 0) {
       throw new BadRequestException('A partner and at least one wellbeing scope are required');
     }
+    const expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : null;
+    if (expiresAt && expiresAt <= new Date()) {
+      throw new BadRequestException('Wellbeing consent expiry must be in the future');
+    }
     const recipient = await this.prisma.familyMember.findFirst({
       where: { familyId, userId: dto.recipientId, role: 'PARTNER' },
     });
@@ -85,13 +89,13 @@ export class WellbeingService {
         ownerId: userId,
         recipientId: dto.recipientId,
         scopes: dto.scopes,
-        expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+        expiresAt,
         revokedAt: null,
       },
       update: {
         familyId,
         scopes: dto.scopes,
-        expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+        expiresAt,
         revokedAt: null,
       },
     });
@@ -119,10 +123,16 @@ export class WellbeingService {
       where: {
         familyId,
         recipientId: userId,
+        family: { status: 'ACTIVE' },
+        owner: { isActive: true, familyMember: { familyId } },
         revokedAt: null,
         OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
       },
-      include: { owner: { select: { id: true, firstName: true, lastName: true } } },
+      include: {
+        owner: {
+          select: { id: true, firstName: true, lastName: true },
+        },
+      },
     });
     const result = [];
     for (const grant of grants) {

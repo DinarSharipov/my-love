@@ -45,6 +45,11 @@ export class RecurringPaymentsController {
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.payments.list(user.id);
   }
+  @Get('archived')
+  @ApiOkResponse({ type: [RecurringPaymentResponseDto] })
+  archived(@CurrentUser() user: AuthenticatedUser) {
+    return this.payments.listArchived(user.id);
+  }
   @Get(':id/forecasts')
   @ApiOkResponse({ type: [RecurringPaymentForecastResponseDto] })
   forecasts(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
@@ -69,5 +74,14 @@ export class RecurringPaymentsController {
     @ConcurrencyVersion() version?: number,
   ) {
     return this.payments.archive(user.id, id, version);
+  }
+  @Post(':id/restore')
+  @ApiOkResponse({ type: RecurringPaymentResponseDto })
+  restore(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @ConcurrencyVersion() version?: number,
+  ) {
+    return this.payments.restore(user.id, id, version);
   }
 }
