@@ -33,6 +33,11 @@ describe('FirstDateService', () => {
     deletionRequestedAt: null,
     deletionScheduledAt: null,
     retentionAnonymizedAt: null,
+    avatarObjectKey: null,
+    avatarPreviewObjectKey: null,
+    avatarPreviewToken: null,
+    avatarMimeType: null,
+    avatarSizeBytes: null,
     createdAt: new Date('2026-08-12T10:00:00.000Z'),
     updatedAt: new Date('2026-08-12T10:00:00.000Z'),
   };

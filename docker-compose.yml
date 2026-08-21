@@ -45,6 +45,7 @@ services:
       SMTP_PORT: 1025
       SMTP_SECURE: 'false'
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-no-reply@example.com}
+    command: ['sh', '-c', 'npx prisma migrate deploy && node dist/main.js']
     ports:
       - '${PORT:-5000}:5000'
     depends_on:

@@ -19,6 +19,7 @@ Backend for a family-management app: household tasks, budgets, events, reminders
 - Enforce authorization and family ownership server-side. Never trust user IDs or family IDs supplied by the client without checking access.
 - Frontend repository: `/Users/dinarsaripov/projects/my-love-frontend`. Before changing an endpoint or DTO, inspect its RTK Query usage and avoid silent breaking changes; coordinate or update the contract when required.
 - The frontend repository is read-only for backend agents. Never create, edit, format, generate, delete, or commit files in `/Users/dinarsaripov/projects/my-love-frontend`; a separate agent owns it. Frontend files may only be inspected to verify existing contracts. Record required frontend follow-up in the backend status instead of changing the frontend.
+- This project is backend-only. Backend agents do not study, implement, modify, generate, format, delete, or commit frontend code; frontend work, frontend roadmap execution, and frontend contract adoption belong to the separate frontend project/agent. Only inspect frontend contracts when strictly required to keep a backend API compatible.
 
 ## Database and configuration
 

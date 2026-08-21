@@ -11,6 +11,8 @@ export class UserResponseDto {
   @ApiProperty({ type: String, format: 'date', example: '1995-05-20' }) birthDate: Date;
   @ApiPropertyOptional({ type: String, nullable: true, example: '+79991234567' })
   phone: string | null;
+  @ApiPropertyOptional({ type: String, format: 'uri', nullable: true })
+  avatarUrl: string | null;
   @ApiProperty({ example: 'ru-RU' }) locale: string;
   @ApiProperty({ example: 'Europe/Moscow' }) timeZone: string;
   @ApiProperty({ minimum: 1 }) version: number;
@@ -26,6 +28,10 @@ export class UserResponseDto {
       description: user.description,
       birthDate: user.birthDate,
       phone: user.phone,
+      avatarUrl:
+        user.avatarPreviewObjectKey && user.avatarPreviewToken
+          ? `/api/v1/users/${user.id}/avatar?token=${encodeURIComponent(user.avatarPreviewToken)}`
+          : null,
       locale: user.locale,
       timeZone: user.timeZone,
       version: user.version,

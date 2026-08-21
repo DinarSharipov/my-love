@@ -8,5 +8,6 @@ import { FamilyMembersModule } from '../family-members/family-members.module';
   imports: [FamilyMembersModule],
   controllers: [MediaController],
   providers: [MediaService, S3StorageService],
+  exports: [S3StorageService],
 })
 export class MediaModule {}

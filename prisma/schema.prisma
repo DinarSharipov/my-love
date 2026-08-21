@@ -154,6 +154,11 @@ model User {
   deletionRequestedAt              DateTime?                   @map("deletion_requested_at")
   deletionScheduledAt              DateTime?                   @map("deletion_scheduled_at")
   retentionAnonymizedAt            DateTime?                   @map("retention_anonymized_at")
+  avatarObjectKey                  String?                     @map("avatar_object_key") @db.VarChar(512)
+  avatarPreviewObjectKey           String?                     @map("avatar_preview_object_key") @db.VarChar(512)
+  avatarPreviewToken               String?                     @map("avatar_preview_token") @db.VarChar(64)
+  avatarMimeType                   String?                     @map("avatar_mime_type") @db.VarChar(127)
+  avatarSizeBytes                  BigInt?                     @map("avatar_size_bytes")
   createdAt                        DateTime                    @default(now()) @map("created_at")
   updatedAt                        DateTime                    @updatedAt @map("updated_at")
   sessions                         AuthSession[]

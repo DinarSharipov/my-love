@@ -687,3 +687,26 @@ Root cause: production API requires `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3
 Permanent fix: store S3 values as separate GitHub Environment `production` secrets (`S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, optional `S3_PRESIGNED_URL_EXPIRES_IN`). The workflow injects these secrets directly into the temporary production env and validates required values before SSH. `PRODUCTION_ENV` remains for non-S3 settings; server backup files are not a configuration source of truth.
 
 Runbook: on `Config validation error: S3_* is required`, check GitHub Environment secrets first; do not hard-code credentials, commit `.env`, or add Docker-based backup recovery. Update the environment secrets, rerun the workflow, then verify migration, API health, and container health.
+
+# 2026-08-21 Local Swagger and API container refresh
+
+Swagger contract обновлён для avatar preview и media streaming/download: добавлены query/header
+описания для capability token и HTTP Range, а также media response content types.
+Runtime-контракт доступен по `GET /docs-json` и `GET /docs-yaml`, UI остаётся на `/docs`.
+Локальный API-контейнер пересобран из текущего исходного кода; frontend может подтягивать JSON с `http://localhost:5000/docs-json`.
+Локальный `api` теперь перед стартом выполняет идемпотентный `prisma migrate deploy`, поэтому новые миграции не остаются неприменёнными после `docker compose up`.
+
+Проверки: build, lint, format check и `git diff --check`; после пересборки — Docker health, migration status и Swagger endpoint smoke.
+Следом: frontend agent может обновить клиент из `/docs-json`; фронтенд-репозиторий backend-агентом не изменяется.
+
+# 2026-08-21 User avatars in private S3
+
+Зафиксировано backend-only правило: frontend не изучается и не изменяется backend-агентами; frontend contract adoption выполняется отдельным frontend-проектом/агентом.
+
+Добавлена Prisma migration `20260821130000_add_user_avatar` с private S3 metadata в `User`: original object key, preview object key, MIME type и размер. `POST /api/v1/users/me/avatar` принимает только изображения до 5 MB, сохраняет оригинал в `avatars/{userId}/`, создаёт WebP preview 320x320 quality 82 в `avatar-previews/{userId}/`, а `DELETE /api/v1/users/me/avatar` удаляет avatar metadata и оба объекта. Оригинал не выдаётся API.
+
+`avatarUrl` — стабильный application preview endpoint `/api/v1/users/{id}/avatar`, который отдаёт только private WebP preview и поддерживает Range. Поле добавлено в current/public user DTO, список пользователей, auth/family/event/first-date user representations и account export profile. S3 bucket остаётся private; storage keys наружу не раскрываются.
+
+Проверки: Prisma format/validate/generate, build, lint, full Jest 35 suites / 127 tests, format check и `git diff --check` PASS. Frontend follow-up: подключить multipart upload и использовать `avatarUrl`; frontend repository не изменялся.
+
+Следом: frontend adoption отдельным агентом и production smoke upload/replace/delete avatar.

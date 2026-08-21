@@ -25,6 +25,11 @@ describe('AuthService', () => {
     deletionRequestedAt: null,
     deletionScheduledAt: null,
     retentionAnonymizedAt: null,
+    avatarObjectKey: null,
+    avatarPreviewObjectKey: null,
+    avatarPreviewToken: null,
+    avatarMimeType: null,
+    avatarSizeBytes: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

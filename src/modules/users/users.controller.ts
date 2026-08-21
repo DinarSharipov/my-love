@@ -1,15 +1,26 @@
 import {
   Body,
+  BadRequestException,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
   UseGuards,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { randomUUID } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -48,6 +59,49 @@ export class UsersController {
   @ApiOkResponse({ type: AccountExportResponseDto })
   exportCurrentUser(@CurrentUser() user: AuthenticatedUser): Promise<AccountExportResponseDto> {
     return this.usersService.exportCurrent(user.id);
+  }
+
+  @Post('me/avatar')
+  @ApiOperation({ summary: 'Upload or replace the current user avatar' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiOkResponse({ type: UserResponseDto })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: tmpdir(),
+        filename: (_request, file, callback) =>
+          callback(null, `${randomUUID()}-${file.originalname}`),
+      }),
+      limits: { fileSize: 5 * 1024 * 1024 },
+      fileFilter: (_request, file, callback) =>
+        callback(
+          file.mimetype.startsWith('image/')
+            ? null
+            : new BadRequestException('Avatar must be an image'),
+          file.mimetype.startsWith('image/'),
+        ),
+    }),
+  )
+  uploadAvatar(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<UserResponseDto> {
+    return this.usersService.uploadAvatar(user.id, file as Express.Multer.File);
+  }
+
+  @Delete('me/avatar')
+  @ApiOperation({ summary: 'Remove the current user avatar' })
+  @ApiOkResponse({ schema: { example: { deleted: true } } })
+  async removeAvatar(@CurrentUser() user: AuthenticatedUser): Promise<{ deleted: true }> {
+    await this.usersService.removeAvatar(user.id);
+    return { deleted: true };
   }
 
   @Patch('me')

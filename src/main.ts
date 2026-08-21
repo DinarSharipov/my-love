@@ -35,6 +35,8 @@ async function bootstrap(): Promise<void> {
     operationIdFactory: (_controllerKey: string, methodKey: string) => methodKey,
   });
   SwaggerModule.setup('docs', app, swaggerDocument, {
+    jsonDocumentUrl: 'docs-json',
+    yamlDocumentUrl: 'docs-yaml',
     swaggerOptions: { persistAuthorization: true },
   });
 

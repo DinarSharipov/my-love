@@ -11,6 +11,8 @@ export class PublicUserResponseDto {
   @ApiPropertyOptional({ type: String, nullable: true }) description: string | null;
   @ApiProperty({ example: 'iv***@example.com' }) email: string;
   @ApiProperty({ description: 'Whether the user already belongs to a family' }) hasFamily: boolean;
+  @ApiPropertyOptional({ type: String, format: 'uri', nullable: true })
+  avatarUrl: string | null;
 
   static fromEntity(user: PublicUserEntity): PublicUserResponseDto {
     return {
@@ -21,6 +23,10 @@ export class PublicUserResponseDto {
       description: user.description,
       email: this.maskEmail(user.email),
       hasFamily: user.familyMember !== null,
+      avatarUrl:
+        user.avatarPreviewObjectKey && user.avatarPreviewToken
+          ? `/api/v1/users/${user.id}/avatar?token=${encodeURIComponent(user.avatarPreviewToken)}`
+          : null,
     };
   }
 

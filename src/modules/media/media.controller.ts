@@ -23,6 +23,8 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiHeader,
+  ApiProduces,
   ApiTags,
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -142,41 +144,63 @@ export class MediaController {
   }
 
   @Get('videos/:id/stream')
-  @Get('audio/:id/stream')
-  @ApiOperation({ summary: 'Stream a family video or audio object; supports HTTP Range' })
-  streamMedia(
+  @ApiOperation({ summary: 'Stream a family video object; supports HTTP Range' })
+  @ApiProduces('video/*')
+  @ApiHeader({
+    name: 'Range',
+    required: false,
+    description: 'Optional byte range for playback/seek',
+  })
+  streamVideo(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<StreamableFile> {
-    return this.createStream(
-      user.id,
-      id,
-      request,
-      response,
-      false,
-      request.path.includes('/audio/') ? MediaKind.AUDIO : MediaKind.VIDEO,
-    );
+    return this.createStream(user.id, id, request, response, false, MediaKind.VIDEO);
+  }
+
+  @Get('audio/:id/stream')
+  @ApiOperation({ summary: 'Stream a family audio object; supports HTTP Range' })
+  @ApiProduces('audio/*')
+  @ApiHeader({
+    name: 'Range',
+    required: false,
+    description: 'Optional byte range for playback/seek',
+  })
+  streamAudio(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    return this.createStream(user.id, id, request, response, false, MediaKind.AUDIO);
   }
 
   @Get('videos/:id/download')
-  @Get('audio/:id/download')
-  @ApiOperation({ summary: 'Download a family video or audio object' })
-  downloadMedia(
+  @ApiOperation({ summary: 'Download a family video object' })
+  @ApiProduces('application/octet-stream')
+  @ApiHeader({ name: 'Range', required: false, description: 'Optional byte range' })
+  downloadVideo(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<StreamableFile> {
-    return this.createStream(
-      user.id,
-      id,
-      request,
-      response,
-      true,
-      request.path.includes('/audio/') ? MediaKind.AUDIO : MediaKind.VIDEO,
-    );
+    return this.createStream(user.id, id, request, response, true, MediaKind.VIDEO);
+  }
+
+  @Get('audio/:id/download')
+  @ApiOperation({ summary: 'Download a family audio object' })
+  @ApiProduces('application/octet-stream')
+  @ApiHeader({ name: 'Range', required: false, description: 'Optional byte range' })
+  downloadAudio(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    return this.createStream(user.id, id, request, response, true, MediaKind.AUDIO);
   }
 
   @Get(':id')

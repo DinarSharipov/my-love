@@ -1,7 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, User } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { extname } from 'node:path';
+import { unlink } from 'node:fs/promises';
+import sharp from 'sharp';
 import { paginationMeta } from '../../common/dto/pagination-response.dto';
 import { PrismaService } from '../../database/prisma.service';
+import { S3StorageService } from '../media/s3-storage.service';
 import { PaginatedUsersResponseDto } from './dto/paginated-users-response.dto';
 import { PublicUserResponseDto } from './dto/public-user-response.dto';
 import { UpdateCurrentUserDto } from './dto/update-current-user.dto';
@@ -10,9 +15,16 @@ import { UsersQueryDto } from './dto/users-query.dto';
 import { VersionConflictException } from '../../common/http/version-conflict.exception';
 import { AccountExportResponseDto } from './dto/account-export-response.dto';
 
+const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024;
+const AVATAR_PREVIEW_SIZE = 320;
+const AVATAR_PREVIEW_QUALITY = 82;
+
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: S3StorageService,
+  ) {}
 
   create(data: Prisma.UserCreateInput): Promise<User> {
     return this.prisma.user.create({ data });
@@ -24,6 +36,91 @@ export class UsersService {
 
   findById(id: string): Promise<User | null> {
     return this.prisma.user.findUnique({ where: { id } });
+  }
+
+  async uploadAvatar(userId: string, file: Express.Multer.File): Promise<UserResponseDto> {
+    if (!file) throw new BadRequestException('File is required');
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Avatar must be an image');
+    }
+    if (file.size > MAX_AVATAR_SIZE_BYTES) {
+      throw new BadRequestException('Avatar exceeds the 5 MB size limit');
+    }
+    const previous = await this.prisma.user.findFirst({
+      where: { id: userId, isActive: true },
+      select: { avatarObjectKey: true, avatarPreviewObjectKey: true },
+    });
+    if (!previous) throw new NotFoundException('User not found');
+
+    const extension =
+      extname(file.originalname)
+        .toLowerCase()
+        .replace(/[^a-z0-9.]/g, '') || '.bin';
+    const objectKey = `avatars/${userId}/${randomUUID()}${extension}`;
+    const previewObjectKey = `avatar-previews/${userId}/${randomUUID()}.webp`;
+    const previewToken = randomUUID();
+    try {
+      const preview = await sharp(file.path)
+        .rotate()
+        .resize(AVATAR_PREVIEW_SIZE, AVATAR_PREVIEW_SIZE, {
+          fit: 'cover',
+          position: 'centre',
+          withoutEnlargement: true,
+        })
+        .webp({ quality: AVATAR_PREVIEW_QUALITY })
+        .toBuffer();
+      await this.storage.uploadFile(objectKey, file.path, file.mimetype, file.size);
+      await this.storage.uploadBuffer(previewObjectKey, preview, 'image/webp');
+      const updated = await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          avatarObjectKey: objectKey,
+          avatarPreviewObjectKey: previewObjectKey,
+          avatarPreviewToken: previewToken,
+          avatarMimeType: file.mimetype,
+          avatarSizeBytes: file.size,
+          version: { increment: 1 },
+        },
+      });
+      await this.deleteAvatarObjects(previous.avatarObjectKey, previous.avatarPreviewObjectKey);
+      return UserResponseDto.fromEntity(updated);
+    } catch (error) {
+      await this.deleteAvatarObjects(objectKey, previewObjectKey);
+      throw error;
+    } finally {
+      await unlink(file.path).catch(() => undefined);
+    }
+  }
+
+  async removeAvatar(userId: string): Promise<void> {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, isActive: true },
+      select: { avatarObjectKey: true, avatarPreviewObjectKey: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        avatarObjectKey: null,
+        avatarPreviewObjectKey: null,
+        avatarPreviewToken: null,
+        avatarMimeType: null,
+        avatarSizeBytes: null,
+        version: { increment: 1 },
+      },
+    });
+    await this.deleteAvatarObjects(user.avatarObjectKey, user.avatarPreviewObjectKey);
+  }
+
+  async streamAvatar(id: string, token: string | undefined, range?: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id, isActive: true },
+      select: { avatarPreviewObjectKey: true, avatarPreviewToken: true },
+    });
+    if (!user?.avatarPreviewObjectKey || !token || token !== user.avatarPreviewToken) {
+      throw new NotFoundException('Avatar not found');
+    }
+    return this.storage.getObjectStream(user.avatarPreviewObjectKey, range);
   }
 
   async findCurrent(id: string): Promise<UserResponseDto> {
@@ -44,6 +141,8 @@ export class UsersService {
         description: true,
         birthDate: true,
         phone: true,
+        avatarPreviewObjectKey: true,
+        avatarPreviewToken: true,
         locale: true,
         timeZone: true,
         version: true,
@@ -141,12 +240,20 @@ export class UsersService {
       sentFamilyInvitations,
       receivedFamilyInvitations,
       sentPrivateInvitations,
+      avatarPreviewObjectKey,
+      avatarPreviewToken,
       ...profile
     } = user;
     return {
       format: 'my-love-account-export',
       exportedAt: new Date(),
-      profile,
+      profile: {
+        ...profile,
+        avatarUrl:
+          avatarPreviewObjectKey && avatarPreviewToken
+            ? `/api/v1/users/${id}/avatar?token=${encodeURIComponent(avatarPreviewToken)}`
+            : null,
+      },
       families: familyMember ? [familyMember.family] : [],
       invitations: [
         ...sentFamilyInvitations,
@@ -222,5 +329,14 @@ export class UsersService {
     });
     if (!user) throw new NotFoundException('User not found');
     return PublicUserResponseDto.fromEntity(user);
+  }
+
+  private async deleteAvatarObjects(objectKey: string | null, previewObjectKey: string | null) {
+    await Promise.all([
+      objectKey ? this.storage.deleteFile(objectKey).catch(() => undefined) : Promise.resolve(),
+      previewObjectKey
+        ? this.storage.deleteFile(previewObjectKey).catch(() => undefined)
+        : Promise.resolve(),
+    ]);
   }
 }
