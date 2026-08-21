@@ -90,7 +90,22 @@ jobs:
             printf '%s\n' "$PRODUCTION_ENV"
             printf '%s\n' 'TELEGRAM_INTEGRATION_ENABLED=true'
             printf 'TELEGRAM_INTEGRATION_SECRET=%s\n' "$TELEGRAM_INTEGRATION_SECRET"
-          } | ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" 'umask 077; cat > /opt/my-love/.env'
+          } | ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" '
+            umask 077
+            tmp_env=$(mktemp /opt/my-love/.env.XXXXXX)
+            cat > "$tmp_env"
+            source_env=/opt/my-love/.env
+            if ! grep -q "^S3_" "$source_env" 2>/dev/null; then
+              backup_env=$(ls -1t /opt/my-love/.env.bak-* 2>/dev/null | head -n 1 || true)
+              if [ -n "$backup_env" ]; then source_env="$backup_env"; fi
+            fi
+            if [ -f "$source_env" ]; then
+              grep -v "^S3_" "$tmp_env" > "${tmp_env}.base"
+              grep "^S3_" "$source_env" >> "${tmp_env}.base" || true
+              mv "${tmp_env}.base" "$tmp_env"
+            fi
+            mv "$tmp_env" /opt/my-love/.env
+          '
       - name: Pull, migrate and restart
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
