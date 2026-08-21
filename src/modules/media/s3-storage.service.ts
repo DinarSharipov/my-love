@@ -2,9 +2,15 @@ import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   DeleteObjectCommand,
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
   GetObjectCommand,
+  HeadObjectCommand,
+  ListPartsCommand,
   PutObjectCommand,
   S3Client,
+  UploadPartCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createReadStream } from 'node:fs';
@@ -15,6 +21,7 @@ export class S3StorageService {
   private readonly client: S3Client;
   private readonly bucket: string;
   private readonly downloadUrlExpiresIn: number;
+  private readonly uploadUrlExpiresIn = 3600;
 
   constructor(config: ConfigService) {
     this.bucket = config.getOrThrow<string>('S3_BUCKET');
@@ -79,6 +86,135 @@ export class S3StorageService {
       );
     } catch {
       throw new InternalServerErrorException('Media storage URL generation failed');
+    }
+  }
+
+  async initiateMultipartUpload(key: string, contentType: string): Promise<string> {
+    try {
+      const result = await this.client.send(
+        new CreateMultipartUploadCommand({
+          Bucket: this.bucket,
+          Key: key,
+          ContentType: contentType,
+        }),
+      );
+      if (!result.UploadId) throw new Error('S3 did not return upload id');
+      return result.UploadId;
+    } catch {
+      throw new InternalServerErrorException('Media multipart upload initiation failed');
+    }
+  }
+
+  async createPartUploadUrl(key: string, uploadId: string, partNumber: number): Promise<string> {
+    try {
+      return await getSignedUrl(
+        this.client,
+        new UploadPartCommand({
+          Bucket: this.bucket,
+          Key: key,
+          UploadId: uploadId,
+          PartNumber: partNumber,
+        }),
+        { expiresIn: this.uploadUrlExpiresIn },
+      );
+    } catch {
+      throw new InternalServerErrorException('Media part URL generation failed');
+    }
+  }
+
+  async completeMultipartUpload(
+    key: string,
+    uploadId: string,
+    parts: Array<{ PartNumber: number; ETag: string }>,
+  ): Promise<void> {
+    try {
+      await this.client.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: this.bucket,
+          Key: key,
+          UploadId: uploadId,
+          MultipartUpload: { Parts: parts.sort((a, b) => a.PartNumber - b.PartNumber) },
+        }),
+      );
+    } catch {
+      throw new InternalServerErrorException('Media multipart upload completion failed');
+    }
+  }
+
+  async abortMultipartUpload(key: string, uploadId: string): Promise<void> {
+    try {
+      await this.client.send(
+        new AbortMultipartUploadCommand({ Bucket: this.bucket, Key: key, UploadId: uploadId }),
+      );
+    } catch {
+      throw new InternalServerErrorException('Media multipart upload abort failed');
+    }
+  }
+
+  async listUploadedParts(
+    key: string,
+    uploadId: string,
+  ): Promise<Array<{ partNumber: number; sizeBytes: number }>> {
+    try {
+      const result = await this.client.send(
+        new ListPartsCommand({ Bucket: this.bucket, Key: key, UploadId: uploadId }),
+      );
+      return (result.Parts ?? []).map((part) => ({
+        partNumber: part.PartNumber ?? 0,
+        sizeBytes: part.Size ?? 0,
+      }));
+    } catch {
+      throw new InternalServerErrorException('Media multipart upload status failed');
+    }
+  }
+
+  async getObjectStream(
+    key: string,
+    range?: string,
+  ): Promise<{
+    body: NodeJS.ReadableStream;
+    contentLength: number;
+    contentRange?: string;
+    contentType?: string;
+  }> {
+    try {
+      const result = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key, Range: range }),
+      );
+      if (!result.Body || result.ContentLength === undefined)
+        throw new Error('S3 object body missing');
+      return {
+        body: result.Body as NodeJS.ReadableStream,
+        contentLength: result.ContentLength,
+        contentRange: result.ContentRange,
+        contentType: result.ContentType,
+      };
+    } catch {
+      throw new InternalServerErrorException('Media streaming failed');
+    }
+  }
+
+  async downloadBuffer(key: string): Promise<Buffer> {
+    try {
+      const result = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      if (!result.Body) throw new Error('S3 object body missing');
+      return Buffer.from(await result.Body.transformToByteArray());
+    } catch {
+      throw new InternalServerErrorException('Media download failed');
+    }
+  }
+
+  async headObject(key: string): Promise<{ contentLength: number; contentType?: string }> {
+    try {
+      const result = await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      if (result.ContentLength === undefined) throw new Error('S3 object length missing');
+      return { contentLength: result.ContentLength, contentType: result.ContentType };
+    } catch {
+      throw new InternalServerErrorException('Media metadata lookup failed');
     }
   }
 

@@ -74,6 +74,18 @@ enum OutboxEventStatus {
   FAILED
 }
 
+enum MediaKind {
+  IMAGE
+  VIDEO
+  AUDIO
+}
+
+enum MediaUploadStatus {
+  INITIATED
+  COMPLETED
+  ABORTED
+}
+
 enum WalletType {
   PERSONAL
   FAMILY
@@ -199,28 +211,52 @@ model User {
   createdWellbeingRituals          WellbeingRitual[]           @relation("WellbeingRitualCreator")
   createdWellbeingCoupleMeetings   WellbeingCoupleMeeting[]    @relation("WellbeingCoupleMeetingCreator")
   media                            Media[]
+  mediaUploadSessions              MediaUploadSession[]
 
   @@index([lastName, firstName], map: "users_last_name_first_name_idx")
   @@map("users")
 }
 
 model Media {
-  id           String   @id @default(uuid()) @db.Uuid
-  userId       String   @map("user_id") @db.Uuid
-  familyId     String   @map("family_id") @db.Uuid
-  objectKey    String   @unique @map("object_key") @db.VarChar(512)
-  previewObjectKey String? @map("preview_object_key") @db.VarChar(512)
-  originalName String   @map("original_name") @db.VarChar(255)
-  mimeType     String   @map("mime_type") @db.VarChar(127)
-  sizeBytes    BigInt   @map("size_bytes")
-  createdAt    DateTime @default(now()) @map("created_at")
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  family       Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  familyId         String    @map("family_id") @db.Uuid
+  objectKey        String    @unique @map("object_key") @db.VarChar(512)
+  previewObjectKey String?   @map("preview_object_key") @db.VarChar(512)
+  originalName     String    @map("original_name") @db.VarChar(255)
+  mimeType         String    @map("mime_type") @db.VarChar(127)
+  kind             MediaKind
+  sizeBytes        BigInt    @map("size_bytes")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family           Family    @relation(fields: [familyId], references: [id], onDelete: Cascade)
 
   @@index([familyId, createdAt])
+  @@index([familyId, kind, createdAt])
   @@index([familyId, originalName])
   @@index([userId, createdAt])
   @@map("media")
+}
+
+model MediaUploadSession {
+  id           String            @id @default(uuid()) @db.Uuid
+  uploadId     String            @unique @map("upload_id") @db.VarChar(256)
+  userId       String            @map("user_id") @db.Uuid
+  familyId     String            @map("family_id") @db.Uuid
+  objectKey    String            @db.VarChar(512)
+  originalName String            @map("original_name") @db.VarChar(255)
+  mimeType     String            @map("mime_type") @db.VarChar(127)
+  kind         MediaKind
+  sizeBytes    BigInt            @map("size_bytes")
+  status       MediaUploadStatus @default(INITIATED)
+  expiresAt    DateTime          @map("expires_at")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family       Family            @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, createdAt])
+  @@index([familyId, status, createdAt])
+  @@map("media_upload_sessions")
 }
 
 model Family {
@@ -235,6 +271,7 @@ model Family {
   updatedAt                DateTime                   @updatedAt @map("updated_at")
   members                  FamilyMember[]
   media                    Media[]
+  mediaUploadSessions      MediaUploadSession[]
   events                   FamilyEvent[]
   firstDate                FirstDate?
   dissolutionRequests      FamilyDissolutionRequest[]

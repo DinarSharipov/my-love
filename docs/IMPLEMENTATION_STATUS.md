@@ -667,3 +667,15 @@ backfill `family_id` через `family_members`; orphan media останавл�
 
 Следом: после проверки frontend-контракта применить миграцию на staging/production и выполнить
 smoke upload/list/detail для двух пользователей одной семьи.
+# 2026-08-21 Media kind separation, multipart upload and streaming
+
+Media теперь имеет `kind`: `IMAGE`, `VIDEO`, `AUDIO`; новые S3 object keys идут в `images/`, `videos/`, `audio/` по family-префиксу. Миграция классифицирует существующие objects по MIME type.
+
+Добавлен direct S3 multipart flow: `POST /api/v1/media/uploads/initiate`, `GET /api/v1/media/uploads/:id/status`, `POST /api/v1/media/uploads/:id/complete`, `DELETE /api/v1/media/uploads/:id`. Backend хранит upload session metadata в Prisma, выдаёт presigned part URLs, проверяет family membership, MIME, declared/actual size и cleanup.
+
+Добавлены family-scoped endpoints `GET /api/v1/media/videos/:id/stream`, `GET /api/v1/media/videos/:id/download` и аналогичные `audio` endpoints. Streaming поддерживает HTTP Range/206 для seek/playback; download возвращает attachment. Legacy multipart endpoint сохранён для compatibility и принимает audio.
+
+Лимиты: image 10 MB, video 500 MB, audio 100 MB; multipart part 10 MB. Все S3 objects private. Selectel bucket CORS должен разрешать PUT с клиентского origin и expose `ETag`. Frontend follow-up: XHR/fetch progress, complete с ETags, player через stream endpoint.
+
+Проверки: Prisma format/validate/generate, build, lint, targeted media Jest 3/3, format check и `git diff --check` PASS; полный Jest/staging smoke будет отдельным прогоном.
+Verification update: full Jest 35 suites / 127 tests, lint, format check and git diff check PASS after final cleanup; build and Prisma generate PASS.

@@ -95,14 +95,26 @@ jobs:
             tmp_env=$(mktemp /opt/my-love/.env.XXXXXX)
             cat > "$tmp_env"
             source_env=/opt/my-love/.env
+            s3_lines=
             if ! grep -q "^S3_" "$source_env" 2>/dev/null; then
               backup_env=$(ls -1t /opt/my-love/.env.bak-* 2>/dev/null | head -n 1 || true)
-              if [ -n "$backup_env" ]; then source_env="$backup_env"; fi
+              if [ -n "$backup_env" ]; then
+                s3_lines=$(grep "^S3_" "$backup_env" 2>/dev/null || true)
+                if [ -z "$s3_lines" ]; then
+                  s3_lines=$(docker run --rm -v "$backup_env:/backup:ro" caddy:2-alpine sh -c 'grep "^S3_" /backup' 2>/dev/null || true)
+                fi
+              fi
+            else
+              s3_lines=$(grep "^S3_" "$source_env" || true)
             fi
-            if [ -f "$source_env" ]; then
+            if [ -n "$s3_lines" ]; then
               grep -v "^S3_" "$tmp_env" > "${tmp_env}.base"
-              grep "^S3_" "$source_env" >> "${tmp_env}.base" || true
+              printf '%s\n' "$s3_lines" >> "${tmp_env}.base"
               mv "${tmp_env}.base" "$tmp_env"
+            else
+              echo 'Deployment env is missing S3_* variables and no readable backup was found.' >&2
+              rm -f "$tmp_env"
+              exit 1
             fi
             mv "$tmp_env" /opt/my-love/.env
           '
