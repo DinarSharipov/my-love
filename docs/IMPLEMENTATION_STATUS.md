@@ -679,3 +679,11 @@ Media теперь имеет `kind`: `IMAGE`, `VIDEO`, `AUDIO`; новые S3 o
 
 Проверки: Prisma format/validate/generate, build, lint, targeted media Jest 3/3, format check и `git diff --check` PASS; полный Jest/staging smoke будет отдельным прогоном.
 Verification update: full Jest 35 suites / 127 tests, lint, format check and git diff check PASS after final cleanup; build and Prisma generate PASS.
+
+# 2026-08-21 Deployment incident: S3 environment source of truth
+
+Root cause: production API requires `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY`, but GitHub Actions `production/PRODUCTION_ENV` did not contain them. Earlier deploy logic overwrote `/opt/my-love/.env` without S3 values; the root-owned `.env.bak-*` recovery path was unreadable to the deploy user and led to repeated recovery/quoting failures.
+
+Permanent fix: store S3 values as separate GitHub Environment `production` secrets (`S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, optional `S3_PRESIGNED_URL_EXPIRES_IN`). The workflow injects these secrets directly into the temporary production env and validates required values before SSH. `PRODUCTION_ENV` remains for non-S3 settings; server backup files are not a configuration source of truth.
+
+Runbook: on `Config validation error: S3_* is required`, check GitHub Environment secrets first; do not hard-code credentials, commit `.env`, or add Docker-based backup recovery. Update the environment secrets, rerun the workflow, then verify migration, API health, and container health.
