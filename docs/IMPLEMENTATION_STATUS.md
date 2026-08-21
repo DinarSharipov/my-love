@@ -1,3 +1,56 @@
+# 2026-08-20 Local Docker refresh
+
+Обновлены базовые Docker-образы PostgreSQL и Mailpit, production-образ API
+пересобран с `node:24.12.0-bookworm-slim`, локальный compose-стек перезапущен.
+Применены все 48 Prisma migrations; после перезапуска API health проверен: API и
+database доступны. Контейнеры `api`, `postgres`, `mailpit` находятся в healthy.
+
+Локальные endpoints: API `http://localhost:5001`, Mailpit `http://localhost:8025`.
+В процессе первого старта worker один раз получил ошибки из-за запуска до миграций;
+после миграций API перезапущен, новых ошибок в логах нет. `npm ci` сообщил о 3 high
+severity npm audit vulnerabilities и deprecated packages; зависимости не менялись.
+
+Следом: выполнить финальную privacy/retention стабилизацию wellbeing, затем
+санировать отсутствующие типы `nodemailer`/`supertest` и прогнать полный lint/test/build.
+
+# 2026-08-20 Wellbeing retention hardening
+
+Maintenance retention теперь атомарно удаляет все wellbeing consent grants,
+где anonymized account является owner или recipient, непосредственно перед
+анонимизацией пользователя. Это исключает сохранение приватных разрешений после
+окончания deletion grace period; wellbeing family/shared records не удаляются.
+Добавлен regression-тест на consent cleanup и update пользователя в одной
+транзакции. Prisma schema/migrations не менялись; локальный Prisma Client
+перегенерирован.
+
+Проверки: targeted Maintenance Jest 2/2, ESLint, Prettier и `git diff --check`.
+Следом: расширить retention review на связанные notification/integration artifacts
+и затем исправить отсутствующие типы `nodemailer`/`supertest` перед полным build.
+
+# 2026-08-20 Retention notification/integration cleanup
+
+Retention maintenance теперь в одной транзакции с анонимизацией удаляет личные
+notification/integration artifacts удалённого пользователя: inbox notifications,
+notification preferences, Telegram connection и link tokens, а также pending
+`telegram.notify` outbox events по `recipientUserId`. Processing events намеренно
+не удаляются: outbox delivery повторно проверяет active connection и не отправит
+сообщение после удаления connection. Family/shared сущности не затрагиваются.
+
+Проверки: targeted Maintenance Jest 2/2, ESLint, Prettier и `git diff --check`.
+Следом: исправить отсутствующие типы `nodemailer`/`supertest`, затем прогнать полный
+lint/test/build.
+
+# 2026-08-20 Full backend checks
+
+Проверено, что `@types/nodemailer` и `@types/supertest` уже присутствуют в
+`devDependencies`; изменения зависимостей не потребовались. После регенерации
+Prisma Client полный набор локальных проверок проходит: `npm run build`,
+`npm run lint`, `npm test` (34 suites, 124 tests), `npm run format:check` и
+`git diff --check`.
+
+Следом: провести релизный smoke/E2E-прогон на поднятом Docker backend и затем
+подготовить следующий продуктовый срез wellbeing или frontend contract review.
+
 # 2026-08-20 Wellbeing consent privacy hardening
 
 Добавлена server-side проверка: `expiresAt` wellbeing consent должен быть в будущем; просроченные разрешения не создаются и не обновляются. Сохранены active family/owner filters для shared wellbeing read. Миграции не требуются.

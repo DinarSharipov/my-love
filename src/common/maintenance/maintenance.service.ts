@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { FamilyEventDecisionStatus, FamilyInvitationStatus } from '@prisma/client';
+import {
+  FamilyEventDecisionStatus,
+  FamilyInvitationStatus,
+  OutboxEventStatus,
+} from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificationProducerService } from '../notifications/notification-producer.service';
 import { TaskRoutinesService } from '../../modules/tasks/task-routines.service';
@@ -81,17 +85,33 @@ export class MaintenanceService {
     });
     let anonymizedUsers = 0;
     for (const user of users) {
-      const result = await this.prisma.user.updateMany({
-        where: { id: user.id, isActive: false, retentionAnonymizedAt: null },
-        data: {
-          firstName: 'Удалённый',
-          lastName: 'Пользователь',
-          email: `deleted+${user.id}@invalid.local`,
-          description: null,
-          phone: null,
-          birthDate: new Date('1970-01-01T00:00:00.000Z'),
-          retentionAnonymizedAt: now,
-        },
+      const result = await this.prisma.$transaction(async (tx) => {
+        await tx.wellbeingConsentGrant.deleteMany({
+          where: { OR: [{ ownerId: user.id }, { recipientId: user.id }] },
+        });
+        await tx.notification.deleteMany({ where: { userId: user.id } });
+        await tx.notificationPreference.deleteMany({ where: { userId: user.id } });
+        await tx.telegramConnection.deleteMany({ where: { userId: user.id } });
+        await tx.telegramLinkToken.deleteMany({ where: { userId: user.id } });
+        await tx.outboxEvent.deleteMany({
+          where: {
+            type: 'telegram.notify',
+            status: OutboxEventStatus.PENDING,
+            payload: { path: ['recipientUserId'], equals: user.id },
+          },
+        });
+        return tx.user.updateMany({
+          where: { id: user.id, isActive: false, retentionAnonymizedAt: null },
+          data: {
+            firstName: 'Удалённый',
+            lastName: 'Пользователь',
+            email: `deleted+${user.id}@invalid.local`,
+            description: null,
+            phone: null,
+            birthDate: new Date('1970-01-01T00:00:00.000Z'),
+            retentionAnonymizedAt: now,
+          },
+        });
       });
       anonymizedUsers += result.count;
     }
