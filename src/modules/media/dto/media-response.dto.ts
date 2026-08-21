@@ -9,4 +9,9 @@ export class MediaResponseDto {
   @ApiProperty() createdAt: Date;
   @ApiProperty({ description: 'Short-lived URL for downloading the private object' })
   downloadUrl: string;
+  @ApiProperty({
+    nullable: true,
+    description: 'Short-lived URL for a 320px WebP image preview; null for videos',
+  })
+  previewUrl: string | null;
 }

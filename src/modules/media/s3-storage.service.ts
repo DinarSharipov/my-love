@@ -54,6 +54,22 @@ export class S3StorageService {
     }
   }
 
+  async uploadBuffer(key: string, body: Buffer, contentType: string): Promise<void> {
+    try {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: body,
+          ContentType: contentType,
+          ContentLength: body.length,
+        }),
+      );
+    } catch {
+      throw new InternalServerErrorException('Media storage upload failed');
+    }
+  }
+
   async createDownloadUrl(key: string): Promise<string> {
     try {
       return await getSignedUrl(

@@ -652,3 +652,18 @@ immutable `EXPENSE` и reversal таких расходов, группируе�
 Проверки: Prisma format/validate/generate, `npm run build`, `npm run lint`, `npm test` (35 suites / 126 tests), targeted media tests, `git diff --check`; Docker health, migration deploy и Selectel `HeadBucket` smoke test прошли. Frontend follow-up: использовать multipart поле `file`, затем `downloadUrl` для приватного просмотра.
 
 Следом: frontend adoption и при необходимости привязка media к domain entities (children, memories, recipes), включая retention/delete policy.
+## 2026-08-21 Media family visibility and previews
+
+Media теперь привязана к `familyId`, который берётся только из активного membership текущего
+пользователя. `GET /api/v1/media` и `GET /api/v1/media/:id` возвращают медиа всех членов этой
+семьи; `DELETE` сохраняет owner-only правило. Для изображений создаётся отдельный private S3
+preview object в WebP, ограниченный 320px по большей стороне и quality 82; ответ содержит
+короткоживущие `downloadUrl` и `previewUrl`, для видео `previewUrl: null`. Добавлена миграция с
+backfill `family_id` через `family_members`; orphan media останавливают миграцию явной ошибкой.
+
+Добавлена runtime-зависимость `sharp`. Проверки: media Jest 3/3, lint, format check, build и
+`git diff --check` проходят. Frontend contract follow-up: использовать `previewUrl` только для
+изображений и обновить описание list/detail как family-shared.
+
+Следом: после проверки frontend-контракта применить миграцию на staging/production и выполнить
+smoke upload/list/detail для двух пользователей одной семьи.

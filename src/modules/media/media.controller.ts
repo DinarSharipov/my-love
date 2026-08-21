@@ -78,7 +78,7 @@ export class MediaController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List current user media' })
+  @ApiOperation({ summary: 'List media shared with the current family' })
   @ApiOkResponse({ type: PaginatedMediaResponseDto })
   list(
     @CurrentUser() user: AuthenticatedUser,
@@ -88,7 +88,7 @@ export class MediaController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get one current user media item' })
+  @ApiOperation({ summary: 'Get one media item shared with the current family' })
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiOkResponse({ type: MediaResponseDto })
   @ApiNotFoundResponse()
@@ -100,7 +100,7 @@ export class MediaController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete one current user media item' })
+  @ApiOperation({ summary: 'Delete one media item uploaded by the current user' })
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiOkResponse({ schema: { example: { deleted: true } } })
   @ApiNotFoundResponse()

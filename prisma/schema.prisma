@@ -207,15 +207,19 @@ model User {
 model Media {
   id           String   @id @default(uuid()) @db.Uuid
   userId       String   @map("user_id") @db.Uuid
+  familyId     String   @map("family_id") @db.Uuid
   objectKey    String   @unique @map("object_key") @db.VarChar(512)
+  previewObjectKey String? @map("preview_object_key") @db.VarChar(512)
   originalName String   @map("original_name") @db.VarChar(255)
   mimeType     String   @map("mime_type") @db.VarChar(127)
   sizeBytes    BigInt   @map("size_bytes")
   createdAt    DateTime @default(now()) @map("created_at")
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family       Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
 
+  @@index([familyId, createdAt])
+  @@index([familyId, originalName])
   @@index([userId, createdAt])
-  @@index([userId, originalName])
   @@map("media")
 }
 
@@ -230,6 +234,7 @@ model Family {
   createdAt                DateTime                   @default(now()) @map("created_at")
   updatedAt                DateTime                   @updatedAt @map("updated_at")
   members                  FamilyMember[]
+  media                    Media[]
   events                   FamilyEvent[]
   firstDate                FirstDate?
   dissolutionRequests      FamilyDissolutionRequest[]
