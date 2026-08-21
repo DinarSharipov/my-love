@@ -198,9 +198,25 @@ model User {
   receivedWellbeingSupportRequests WellbeingSupportRequest[]   @relation("WellbeingSupportRequestRecipient")
   createdWellbeingRituals          WellbeingRitual[]           @relation("WellbeingRitualCreator")
   createdWellbeingCoupleMeetings   WellbeingCoupleMeeting[]    @relation("WellbeingCoupleMeetingCreator")
+  media                            Media[]
 
   @@index([lastName, firstName], map: "users_last_name_first_name_idx")
   @@map("users")
+}
+
+model Media {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  objectKey    String   @unique @map("object_key") @db.VarChar(512)
+  originalName String   @map("original_name") @db.VarChar(255)
+  mimeType     String   @map("mime_type") @db.VarChar(127)
+  sizeBytes    BigInt   @map("size_bytes")
+  createdAt    DateTime @default(now()) @map("created_at")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, originalName])
+  @@map("media")
 }
 
 model Family {

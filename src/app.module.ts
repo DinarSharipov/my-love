@@ -24,6 +24,7 @@ import { NotificationProducerModule } from './common/notifications/notification-
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { WellbeingModule } from './modules/wellbeing/wellbeing.module';
+import { MediaModule } from './modules/media/media.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { WellbeingModule } from './modules/wellbeing/wellbeing.module';
     CalendarModule,
     FinanceModule,
     WellbeingModule,
+    MediaModule,
     HealthModule,
   ],
   providers: [

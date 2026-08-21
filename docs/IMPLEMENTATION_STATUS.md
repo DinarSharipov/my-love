@@ -643,3 +643,12 @@ immutable `EXPENSE` и reversal таких расходов, группируе�
 - Prisma migration не требуется.
 - Проверки: targeted Jest — 2 suites, 4 tests passed; targeted ESLint, TypeScript и Prettier — успешно; E2E/staging не запускались согласно правилам репозитория.
 - Следующий срез: унифицировать архивный lifecycle для финансовых категорий и проверить связанные API-контракты/Swagger.
+# 2026-08-21 Media S3 storage
+
+Добавлен приватный Selectel S3 media API: `POST /api/v1/media/upload`, `GET /api/v1/media/:id`, `GET /api/v1/media` с pagination и фильтрами `name`, `dateFrom`, `dateTo`, а также `DELETE /api/v1/media/:id`. Доступ ограничен JWT и владельцем metadata; для чтения возвращается короткоживущая presigned URL.
+
+Добавлена Prisma-модель `Media` и миграция `20260821110531_add_media`. Файлы загружаются через временный файл на диске, изображения ограничены 10 MB, видео — 500 MB; бинарные данные в PostgreSQL не сохраняются. S3 credentials читаются из env и не логируются.
+
+Проверки: Prisma format/validate/generate, `npm run build`, `npm run lint`, `npm test` (35 suites / 126 tests), targeted media tests, `git diff --check`; Docker health, migration deploy и Selectel `HeadBucket` smoke test прошли. Frontend follow-up: использовать multipart поле `file`, затем `downloadUrl` для приватного просмотра.
+
+Следом: frontend adoption и при необходимости привязка media к domain entities (children, memories, recipes), включая retention/delete policy.

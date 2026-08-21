@@ -79,4 +79,14 @@ export const envValidationSchema = Joi.object({
   DEFAULT_CURRENCY: Joi.string()
     .pattern(/^[A-Z]{3}$/)
     .default('RUB'),
+  S3_ENDPOINT: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .required(),
+  S3_REGION: Joi.string().min(1).required(),
+  S3_BUCKET: Joi.string()
+    .pattern(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/)
+    .required(),
+  S3_ACCESS_KEY: Joi.string().min(1).required(),
+  S3_SECRET_KEY: Joi.string().min(1).required(),
+  S3_PRESIGNED_URL_EXPIRES_IN: Joi.number().integer().min(60).max(86400).default(900),
 });
