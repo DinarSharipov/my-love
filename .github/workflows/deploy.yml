@@ -115,7 +115,7 @@ jobs:
           APP_IMAGE: ${{ needs.image.outputs.image }}
         run: |
           printf '%s' "$GHCR_TOKEN" | ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
-          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "cd /opt/my-love && APP_IMAGE='$APP_IMAGE' docker compose pull && APP_IMAGE='$APP_IMAGE' docker compose run --rm api npx prisma migrate deploy && APP_IMAGE='$APP_IMAGE' docker compose up -d --remove-orphans && docker image prune -f"
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "cd /opt/my-love && APP_IMAGE='$APP_IMAGE' docker compose pull && APP_IMAGE='$APP_IMAGE' docker compose run --rm api npx prisma migrate deploy && (APP_IMAGE='$APP_IMAGE' docker compose up -d --remove-orphans && docker image prune -f || (docker compose logs --tail=100 api; exit 1))"
       - name: Verify deployment
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
