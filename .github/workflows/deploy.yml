@@ -107,7 +107,7 @@ jobs:
                     reader_container=$(docker create --entrypoint /bin/sh "$helper_image" -c 'sleep 30' 2>/dev/null || true)
                     if [ -n "$reader_container" ] && docker cp "$backup_env" "$reader_container:/tmp/env-backup" >/dev/null 2>&1; then
                       docker start "$reader_container" >/dev/null
-                      s3_lines=$(docker exec "$reader_container" /bin/sh -c 'grep "^S3_" /tmp/env-backup' 2>/dev/null || true)
+                      s3_lines=$(docker exec "$reader_container" grep "^S3_" /tmp/env-backup 2>/dev/null || true)
                       docker rm -f "$reader_container" >/dev/null 2>&1 || true
                     elif [ -n "$reader_container" ]; then
                       docker rm -f "$reader_container" >/dev/null 2>&1 || true
@@ -115,9 +115,9 @@ jobs:
                   fi
                 fi
                 if [ -z "$s3_lines" ]; then
-                  helper_image=$(docker compose config --images 2>/dev/null | grep -E 'postgres|alpine' | head -n 1 || true)
+                  helper_image=$(docker compose config --images 2>/dev/null | grep -E "postgres|alpine" | head -n 1 || true)
                   if [ -n "$helper_image" ]; then
-                    s3_lines=$(docker run --rm --entrypoint /bin/sh -v "$backup_env:/backup:ro" "$helper_image" -c 'grep "^S3_" /backup' 2>/dev/null || true)
+                    s3_lines=$(docker run --rm --entrypoint /bin/sh -v "$backup_env:/backup:ro" "$helper_image" grep "^S3_" /backup 2>/dev/null || true)
                   fi
                 fi
               fi
