@@ -101,7 +101,20 @@ jobs:
               if [ -n "$backup_env" ]; then
                 s3_lines=$(grep "^S3_" "$backup_env" 2>/dev/null || true)
                 if [ -z "$s3_lines" ]; then
-                  s3_lines=$(docker run --rm -v "$backup_env:/backup:ro" caddy:2-alpine sh -c 'grep "^S3_" /backup' 2>/dev/null || true)
+                  helper_container=$(docker ps -aq --filter name=my-love-production-postgres-1 | head -n 1 || true)
+                  if [ -n "$helper_container" ]; then
+                    helper_file=/tmp/codex-env-backup
+                    if docker cp "$backup_env" "$helper_container:$helper_file" >/dev/null 2>&1; then
+                      s3_lines=$(docker exec "$helper_container" sh -c 'grep "^S3_" /tmp/codex-env-backup' 2>/dev/null || true)
+                      docker exec "$helper_container" rm -f "$helper_file" >/dev/null 2>&1 || true
+                    fi
+                  fi
+                fi
+                if [ -z "$s3_lines" ]; then
+                  helper_image=$(docker inspect my-love-production-postgres-1 --format '{{.Config.Image}}' 2>/dev/null || true)
+                  if [ -n "$helper_image" ]; then
+                    s3_lines=$(docker run --rm --entrypoint /bin/sh -v "$backup_env:/backup:ro" "$helper_image" -c 'grep "^S3_" /backup' 2>/dev/null || true)
+                  fi
                 fi
               fi
             else
