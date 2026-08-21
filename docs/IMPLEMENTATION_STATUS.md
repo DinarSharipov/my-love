@@ -710,3 +710,7 @@ Runtime-контракт доступен по `GET /docs-json` и `GET /docs-ya
 Проверки: Prisma format/validate/generate, build, lint, full Jest 35 suites / 127 tests, format check и `git diff --check` PASS. Frontend follow-up: подключить multipart upload и использовать `avatarUrl`; frontend repository не изменялся.
 
 Следом: frontend adoption отдельным агентом и production smoke upload/replace/delete avatar.
+
+# 2026-08-21 CI follow-up
+
+После первого push CI обнаружил устаревший `User` mock в `family-events.service.spec.ts`; добавлены nullable avatar-поля. Локально повторно подтверждены 35 suites / 127 tests, lint, build и `git diff --check`.
