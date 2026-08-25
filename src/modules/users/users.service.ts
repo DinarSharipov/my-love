@@ -7,6 +7,7 @@ import sharp from 'sharp';
 import { paginationMeta } from '../../common/dto/pagination-response.dto';
 import { PrismaService } from '../../database/prisma.service';
 import { S3StorageService } from '../media/s3-storage.service';
+import { ObjectStorageCleanupService } from '../media/object-storage-cleanup.service';
 import { PaginatedUsersResponseDto } from './dto/paginated-users-response.dto';
 import { PublicUserResponseDto } from './dto/public-user-response.dto';
 import { UpdateCurrentUserDto } from './dto/update-current-user.dto';
@@ -24,6 +25,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: S3StorageService,
+    private readonly cleanup: ObjectStorageCleanupService,
   ) {}
 
   create(data: Prisma.UserCreateInput): Promise<User> {
@@ -333,10 +335,8 @@ export class UsersService {
 
   private async deleteAvatarObjects(objectKey: string | null, previewObjectKey: string | null) {
     await Promise.all([
-      objectKey ? this.storage.deleteFile(objectKey).catch(() => undefined) : Promise.resolve(),
-      previewObjectKey
-        ? this.storage.deleteFile(previewObjectKey).catch(() => undefined)
-        : Promise.resolve(),
+      objectKey ? this.cleanup.deleteOrEnqueue(objectKey) : Promise.resolve(),
+      previewObjectKey ? this.cleanup.deleteOrEnqueue(previewObjectKey) : Promise.resolve(),
     ]);
   }
 }

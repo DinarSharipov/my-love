@@ -22,7 +22,17 @@ describe('MaintenanceService', () => {
           { count: 6 },
         ]),
     };
-    const service = new MaintenanceService(prisma as never, {} as never, {} as never, {} as never);
+    const objectStorageCleanup = {
+      cleanupExpiredMultipartUploads: jest.fn().mockResolvedValue({ aborted: 0, purged: 0 }),
+      processDue: jest.fn().mockResolvedValue({ completed: 0, retried: 0 }),
+    };
+    const service = new MaintenanceService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      objectStorageCleanup as never,
+    );
 
     await expect(
       service.cleanupExpiredSecurityArtifacts(new Date('2026-08-15T00:00:00Z')),
@@ -34,6 +44,8 @@ describe('MaintenanceService', () => {
       telegramLinkTokens: 7,
       familyInvitations: 5,
       privateInvitations: 6,
+      multipartUploads: 0,
+      objectStorageTasks: 0,
     });
     expect(prisma.authSession.deleteMany).toHaveBeenCalledWith({
       where: { expiresAt: { lte: new Date('2026-08-15T00:00:00Z') } },
@@ -71,13 +83,24 @@ describe('MaintenanceService', () => {
         }),
       ),
     };
-    const service = new MaintenanceService(prisma as never, {} as never, {} as never, {} as never);
+    const objectStorageCleanup = {
+      cleanupExpiredMultipartUploads: jest.fn().mockResolvedValue({ aborted: 0, purged: 0 }),
+      processDue: jest.fn().mockResolvedValue({ completed: 0, retried: 0 }),
+      deleteOrEnqueue: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new MaintenanceService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      objectStorageCleanup as never,
+    );
     const now = new Date('2026-08-20T00:00:00Z');
 
     await expect(service.anonymizeExpiredAccounts(now)).resolves.toEqual({ anonymizedUsers: 1 });
     expect(prisma.user.findMany).toHaveBeenCalledWith({
       where: { isActive: false, retentionAnonymizedAt: null, deletionScheduledAt: { lte: now } },
-      select: { id: true },
+      select: { id: true, avatarObjectKey: true, avatarPreviewObjectKey: true },
       take: 100,
     });
     expect(prisma.wellbeingConsentGrant.deleteMany).toHaveBeenCalledWith({
@@ -111,6 +134,11 @@ describe('MaintenanceService', () => {
         description: null,
         phone: null,
         birthDate: new Date('1970-01-01T00:00:00.000Z'),
+        avatarObjectKey: null,
+        avatarPreviewObjectKey: null,
+        avatarPreviewToken: null,
+        avatarMimeType: null,
+        avatarSizeBytes: null,
         retentionAnonymizedAt: now,
       },
     });

@@ -714,3 +714,29 @@ Runtime-контракт доступен по `GET /docs-json` и `GET /docs-ya
 # 2026-08-21 CI follow-up
 
 После первого push CI обнаружил устаревший `User` mock в `family-events.service.spec.ts`; добавлены nullable avatar-поля. Локально повторно подтверждены 35 suites / 127 tests, lint, build и `git diff --check`.
+
+# 2026-08-25 S3 lifecycle and direct-upload hardening
+
+Добавлены миграции `20260825090000_add_object_storage_cleanup_tasks` и
+`20260825093000_add_media_upload_failed_status`, а также durable очередь очистки
+private S3: при временной ошибке удаления объекта или abort multipart upload задача сохраняется в
+PostgreSQL с deduplication, lock и exponential retry. Удаление media/avatar metadata теперь не
+блокируется недоступностью S3: объект становится недоступен через API сразу, а cleanup worker
+удаляет его немедленно или повторяет позже. Retention-анонимизация также очищает private avatar
+metadata и ставит в очередь original/preview объекты.
+
+Maintenance worker отменяет истёкшие multipart upload sessions, ставит S3 abort в retry-очередь и
+периодически удаляет старые terminal session records. Новый env:
+`S3_MULTIPART_UPLOAD_SESSION_RETENTION_MS`, default 7 days.
+Завершённая, но невалидная загрузка получает terminal status `FAILED`; ошибка выпуска presigned
+read URL не удаляет уже сохранённый объект и metadata.
+Исправлено существовавшее Prisma mapping-несоответствие `MediaUploadSession.objectKey` ->
+`media_upload_sessions.object_key`; worker теперь корректно обрабатывает upload sessions в живой БД.
+
+Selectel bucket CORS настроен без раскрытия credential: разрешены `GET`, `HEAD`, `PUT` для
+локального и production frontend origins; `ETag`, `Content-Length`, `Content-Range`,
+`Accept-Ranges` доступны клиенту, max age 3600 seconds.
+
+Проверки: Prisma format/generate, build, lint, Jest 36 suites / 130 tests, format check и
+`git diff --check`. Следом: применить migration на production через обычный CI deploy и выполнить
+smoke direct multipart upload/abort/retry; frontend repository не изменяется backend-агентом.

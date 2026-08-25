@@ -8,6 +8,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { NotificationProducerService } from '../notifications/notification-producer.service';
 import { TaskRoutinesService } from '../../modules/tasks/task-routines.service';
 import { RecurringPaymentsService } from '../../modules/finance/recurring-payments.service';
+import { ObjectStorageCleanupService } from '../../modules/media/object-storage-cleanup.service';
 
 export interface CleanupResult {
   sessions: number;
@@ -17,6 +18,8 @@ export interface CleanupResult {
   telegramLinkTokens: number;
   familyInvitations: number;
   privateInvitations: number;
+  multipartUploads: number;
+  objectStorageTasks: number;
 }
 
 export interface RetentionResult {
@@ -35,6 +38,7 @@ export class MaintenanceService {
     private readonly notifications: NotificationProducerService,
     private readonly taskRoutines: TaskRoutinesService,
     private readonly recurringPayments: RecurringPaymentsService,
+    private readonly objectStorageCleanup: ObjectStorageCleanupService,
   ) {}
 
   async cleanupExpiredSecurityArtifacts(now = new Date()): Promise<CleanupResult> {
@@ -62,6 +66,8 @@ export class MaintenanceService {
       }),
     ]);
 
+    const multipartUploads = await this.objectStorageCleanup.cleanupExpiredMultipartUploads(now);
+    const objectStorageTasks = await this.objectStorageCleanup.processDue(now);
     const result = {
       sessions: sessions.count,
       passwordResetTokens: passwordResetTokens.count,
@@ -70,6 +76,8 @@ export class MaintenanceService {
       telegramLinkTokens: telegramLinkTokens.count,
       familyInvitations: familyInvitations.count,
       privateInvitations: privateInvitations.count,
+      multipartUploads: multipartUploads.aborted + multipartUploads.purged,
+      objectStorageTasks: objectStorageTasks.completed + objectStorageTasks.retried,
     } satisfies CleanupResult;
     if (Object.values(result).some((count) => count > 0)) {
       this.logger.log({ event: 'maintenance_cleanup_completed', ...result });
@@ -80,7 +88,7 @@ export class MaintenanceService {
   async anonymizeExpiredAccounts(now = new Date()): Promise<RetentionResult> {
     const users = await this.prisma.user.findMany({
       where: { isActive: false, retentionAnonymizedAt: null, deletionScheduledAt: { lte: now } },
-      select: { id: true },
+      select: { id: true, avatarObjectKey: true, avatarPreviewObjectKey: true },
       take: 100,
     });
     let anonymizedUsers = 0;
@@ -109,11 +117,26 @@ export class MaintenanceService {
             description: null,
             phone: null,
             birthDate: new Date('1970-01-01T00:00:00.000Z'),
+            avatarObjectKey: null,
+            avatarPreviewObjectKey: null,
+            avatarPreviewToken: null,
+            avatarMimeType: null,
+            avatarSizeBytes: null,
             retentionAnonymizedAt: now,
           },
         });
       });
       anonymizedUsers += result.count;
+      if (result.count) {
+        await Promise.all([
+          user.avatarObjectKey
+            ? this.objectStorageCleanup.deleteOrEnqueue(user.avatarObjectKey)
+            : Promise.resolve(),
+          user.avatarPreviewObjectKey
+            ? this.objectStorageCleanup.deleteOrEnqueue(user.avatarPreviewObjectKey)
+            : Promise.resolve(),
+        ]);
+      }
     }
     if (anonymizedUsers) this.logger.log({ event: 'account_retention_completed', anonymizedUsers });
     return { anonymizedUsers };

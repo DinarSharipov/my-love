@@ -14,6 +14,10 @@ describe('MediaService', () => {
   const membership = {
     requireMembership: jest.fn().mockResolvedValue({ familyId: 'family-id' }),
   };
+  const cleanup = {
+    deleteOrEnqueue: jest.fn().mockResolvedValue(undefined),
+    abortOrEnqueue: jest.fn().mockResolvedValue(undefined),
+  };
 
   it('lists all active-family media with name/date filters and pagination', async () => {
     const item = {
@@ -34,7 +38,12 @@ describe('MediaService', () => {
       },
       $transaction: jest.fn().mockResolvedValue([[item], 1]),
     };
-    const service = new MediaService(prisma as never, storage as never, membership as never);
+    const service = new MediaService(
+      prisma as never,
+      storage as never,
+      membership as never,
+      cleanup as never,
+    );
 
     await expect(
       service.findMany('user-id', {
@@ -63,7 +72,12 @@ describe('MediaService', () => {
 
   it('does not reveal a foreign media item', async () => {
     const prisma = { media: { findFirst: jest.fn().mockResolvedValue(null) } };
-    const service = new MediaService(prisma as never, storage as never, membership as never);
+    const service = new MediaService(
+      prisma as never,
+      storage as never,
+      membership as never,
+      cleanup as never,
+    );
 
     await expect(service.findOne('user-id', 'foreign-id')).rejects.toBeInstanceOf(
       NotFoundException,
@@ -82,12 +96,17 @@ describe('MediaService', () => {
         delete: jest.fn().mockResolvedValue(undefined),
       },
     };
-    const service = new MediaService(prisma as never, storage as never, membership as never);
+    const service = new MediaService(
+      prisma as never,
+      storage as never,
+      membership as never,
+      cleanup as never,
+    );
 
     await service.remove('user-id', 'media-id');
 
-    expect(storage.deleteFile).toHaveBeenCalledWith('object-key');
-    expect(storage.deleteFile).toHaveBeenCalledWith('preview-key');
+    expect(cleanup.deleteOrEnqueue).toHaveBeenCalledWith('object-key');
+    expect(cleanup.deleteOrEnqueue).toHaveBeenCalledWith('preview-key');
     expect(prisma.media.delete).toHaveBeenCalledWith({ where: { id: 'media-id' } });
   });
 });

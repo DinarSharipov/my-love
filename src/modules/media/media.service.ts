@@ -20,6 +20,7 @@ import { MediaQueryDto } from './dto/media-query.dto';
 import { MediaResponseDto } from './dto/media-response.dto';
 import { PaginatedMediaResponseDto } from './dto/paginated-media-response.dto';
 import { S3StorageService } from './s3-storage.service';
+import { ObjectStorageCleanupService } from './object-storage-cleanup.service';
 
 type UploadedMediaFile = Express.Multer.File;
 
@@ -29,6 +30,7 @@ export class MediaService {
     private readonly prisma: PrismaService,
     private readonly storage: S3StorageService,
     private readonly membership: FamilyMembershipService,
+    private readonly cleanup: ObjectStorageCleanupService,
   ) {}
 
   async create(userId: string, file: UploadedMediaFile): Promise<MediaResponseDto> {
@@ -50,6 +52,7 @@ export class MediaService {
       .toLowerCase()
       .replace(/[^a-z0-9.]/g, '');
     let familyId: string;
+    let media;
     try {
       ({ familyId } = await this.membership.requireMembership(userId));
     } catch (error) {
@@ -73,7 +76,7 @@ export class MediaService {
           .toBuffer();
         await this.storage.uploadBuffer(previewObjectKey, preview, 'image/webp');
       }
-      const media = await this.prisma.media.create({
+      media = await this.prisma.media.create({
         data: {
           id: mediaId,
           userId,
@@ -86,14 +89,14 @@ export class MediaService {
           sizeBytes: file.size,
         },
       });
-      return this.toResponse(media);
     } catch (error) {
-      await this.storage.deleteFile(objectKey).catch(() => undefined);
-      if (previewObjectKey) await this.storage.deleteFile(previewObjectKey).catch(() => undefined);
+      await this.cleanup.deleteOrEnqueue(objectKey);
+      if (previewObjectKey) await this.cleanup.deleteOrEnqueue(previewObjectKey);
       throw error;
     } finally {
       await this.removeTempFile(file.path);
     }
+    return this.toResponse(media);
   }
 
   async initiateUpload(
@@ -149,7 +152,7 @@ export class MediaService {
       await this.prisma.mediaUploadSession
         .delete({ where: { id: sessionId } })
         .catch(() => undefined);
-      await this.storage.abortMultipartUpload(objectKey, uploadId).catch(() => undefined);
+      await this.cleanup.abortOrEnqueue(objectKey, uploadId);
       throw error;
     }
   }
@@ -194,10 +197,17 @@ export class MediaService {
     );
     const storedObject = await this.storage.headObject(session.objectKey);
     if (storedObject.contentLength !== Number(session.sizeBytes)) {
-      await this.storage.deleteFile(session.objectKey).catch(() => undefined);
+      await Promise.all([
+        this.cleanup.deleteOrEnqueue(session.objectKey),
+        this.prisma.mediaUploadSession.update({
+          where: { id: session.id },
+          data: { status: MediaUploadStatus.FAILED },
+        }),
+      ]);
       throw new BadRequestException('Uploaded object size does not match the declared size');
     }
     let previewObjectKey: string | undefined;
+    let media;
     try {
       if (session.kind === MediaKind.IMAGE) {
         previewObjectKey = `previews/${familyId}/${session.id}.webp`;
@@ -208,7 +218,7 @@ export class MediaService {
           .toBuffer();
         await this.storage.uploadBuffer(previewObjectKey, preview, 'image/webp');
       }
-      const media = await this.prisma.$transaction(async (tx) => {
+      media = await this.prisma.$transaction(async (tx) => {
         const item = await tx.media.create({
           data: {
             id: session.id,
@@ -228,12 +238,15 @@ export class MediaService {
         });
         return item;
       });
-      return this.toResponse(media);
     } catch (error) {
-      if (previewObjectKey) await this.storage.deleteFile(previewObjectKey).catch(() => undefined);
-      await this.storage.deleteFile(session.objectKey).catch(() => undefined);
+      if (previewObjectKey) await this.cleanup.deleteOrEnqueue(previewObjectKey);
+      await this.cleanup.deleteOrEnqueue(session.objectKey);
+      await this.prisma.mediaUploadSession
+        .update({ where: { id: session.id }, data: { status: MediaUploadStatus.FAILED } })
+        .catch(() => undefined);
       throw error;
     }
+    return this.toResponse(media);
   }
 
   async abortUpload(userId: string, sessionId: string): Promise<void> {
@@ -243,11 +256,11 @@ export class MediaService {
     });
     if (!session || session.status !== MediaUploadStatus.INITIATED)
       throw new NotFoundException('Upload session not found');
-    await this.storage.abortMultipartUpload(session.objectKey, session.uploadId);
     await this.prisma.mediaUploadSession.update({
       where: { id: session.id },
       data: { status: MediaUploadStatus.ABORTED },
     });
+    await this.cleanup.abortOrEnqueue(session.objectKey, session.uploadId);
   }
 
   async findOne(userId: string, id: string): Promise<MediaResponseDto> {
@@ -291,9 +304,9 @@ export class MediaService {
     const { familyId } = await this.membership.requireMembership(userId);
     const media = await this.prisma.media.findFirst({ where: { id, userId, familyId } });
     if (!media) throw new NotFoundException('Media not found');
-    await this.storage.deleteFile(media.objectKey);
-    if (media.previewObjectKey) await this.storage.deleteFile(media.previewObjectKey);
     await this.prisma.media.delete({ where: { id: media.id } });
+    await this.cleanup.deleteOrEnqueue(media.objectKey);
+    if (media.previewObjectKey) await this.cleanup.deleteOrEnqueue(media.previewObjectKey);
   }
 
   async stream(

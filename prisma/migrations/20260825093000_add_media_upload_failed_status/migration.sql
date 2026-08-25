@@ -1,0 +1,1 @@
+ALTER TYPE "MediaUploadStatus" ADD VALUE 'FAILED';

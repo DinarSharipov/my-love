@@ -89,4 +89,8 @@ export const envValidationSchema = Joi.object({
   S3_ACCESS_KEY: Joi.string().min(1).required(),
   S3_SECRET_KEY: Joi.string().min(1).required(),
   S3_PRESIGNED_URL_EXPIRES_IN: Joi.number().integer().min(60).max(86400).default(900),
+  S3_MULTIPART_UPLOAD_SESSION_RETENTION_MS: Joi.number()
+    .integer()
+    .min(60_000)
+    .default(7 * 24 * 60 * 60 * 1000),
 });
