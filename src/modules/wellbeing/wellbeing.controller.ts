@@ -74,21 +74,6 @@ export class WellbeingController {
     return this.wellbeing.list(user.id);
   }
 
-  @Get(':id')
-  @ApiOkResponse({ type: WellbeingCheckInResponseDto })
-  @ApiNotFoundResponse()
-  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.wellbeing.findOne(user.id, id);
-  }
-
-  @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiNoContentResponse()
-  @ApiNotFoundResponse()
-  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.wellbeing.remove(user.id, id);
-  }
-
   @Post('consents')
   @ApiCreatedResponse({ type: WellbeingConsentResponseDto })
   grantConsent(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateWellbeingConsentDto) {
@@ -273,5 +258,21 @@ export class WellbeingController {
     @Body() dto: WellbeingCoupleMeetingDecisionDto,
   ) {
     return this.wellbeing.setCoupleMeetingDecision(user.id, id, dto);
+  }
+
+  // Keep catch-all item routes last: Express matches routes in registration order.
+  @Get(':id')
+  @ApiOkResponse({ type: WellbeingCheckInResponseDto })
+  @ApiNotFoundResponse()
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.wellbeing.findOne(user.id, id);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentResponse()
+  @ApiNotFoundResponse()
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.wellbeing.remove(user.id, id);
   }
 }

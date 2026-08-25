@@ -749,3 +749,24 @@ smoke direct multipart upload/abort/retry; frontend repository не изменя
 `http://localhost:5174` вернула `200` и CORS headers; origin `http://localhost:5174` добавлен в
 bucket CORS. Миграция не нужна. Frontend должен повторить `initiate` после перезапуска локального API:
 старые path-style presigned URLs останутся неработоспособны в браузере.
+
+# 2026-08-25 Backend-only boundary and S3 production CORS
+
+Этот репозиторий реализует только backend. Frontend-код, его сборка, конфигурация и деплой здесь не
+изучаются и не изменяются; frontend допускается только как внешний клиент для проверки совместимости
+существующего API. Необходимые действия frontend-команды фиксируются в статусе, но выполняются в её
+отдельном репозитории.
+
+В CORS private Selectel bucket добавлен production origin `http://185.227.144.160`. Для него, как и
+для ранее разрешённых origins, доступны `GET`, `HEAD` и `PUT`, необходимые для direct multipart upload
+и чтения ответов; credential и S3-ключи не раскрываются. При смене production origin его требуется
+явно добавить в bucket CORS до выпуска frontend-клиента.
+
+# 2026-08-25 Wellbeing static route ordering repair
+
+Исправлен production-500 для wellbeing read endpoints. В Express динамические маршруты
+`GET`/`DELETE /check-ins/:id`, объявленные перед статическими, перехватывали сегменты
+`shared-with-me`, `consents`, `assessments`, `trends`, `gratitudes`, `support-requests`,
+`rituals` и `couple-meetings` как идентификаторы check-in. PostgreSQL пытался привести
+эти строки к UUID, что приводило к 500. Catch-all маршруты перемещены в конец
+контроллера; статические endpoints теперь регистрируются первыми. Миграции не требуются.
