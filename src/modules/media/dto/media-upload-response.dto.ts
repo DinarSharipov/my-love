@@ -14,7 +14,7 @@ export class MediaUploadResponseDto {
 }
 
 export class MediaUploadStatusDto {
-  @ApiProperty({ enum: ['INITIATED', 'COMPLETED', 'ABORTED'] }) status: string;
+  @ApiProperty({ enum: ['INITIATED', 'COMPLETED', 'ABORTED', 'FAILED'] }) status: string;
   @ApiProperty() uploadedBytes: number;
   @ApiProperty() totalBytes: number;
 }

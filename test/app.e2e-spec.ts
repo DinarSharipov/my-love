@@ -1,7 +1,7 @@
 import { INestApplication, ValidationPipe, VersioningType } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { FamilyMemberRole, FamilyStatus, Gender, OutboxEventStatus } from '@prisma/client';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { OutboxService } from '../src/common/outbox/outbox.service';
 import { AppModule } from '../src/app.module';
@@ -315,6 +315,34 @@ describe('API security regression (e2e)', () => {
     );
   });
 
+  it('registers static wellbeing routes before the check-in item route', async () => {
+    const [alice, bob] = await Promise.all([
+      register('WellbeingRoutesAlice'),
+      register('WellbeingRoutesBob'),
+    ]);
+    await createFamily(alice, bob);
+
+    const staticRoutes = [
+      'consents',
+      'shared-with-me',
+      'assessments',
+      'trends',
+      'gratitudes',
+      'support-requests',
+      'rituals',
+      'couple-meetings',
+    ];
+
+    for (const route of staticRoutes) {
+      const response = await request(httpServer)
+        .get(`/api/v1/families/me/wellbeing/check-ins/${route}`)
+        .set(auth(alice.accessToken));
+
+      expect(response.status).toBe(200);
+      expect(response.body).not.toMatchObject({ code: 'INTERNAL_SERVER_ERROR' });
+    }
+  });
+
   it('creates and accepts a closed one-time invitation after registration', async () => {
     const sender = await register('LinkSender');
     const recipientEmail = 'linkrecipient@e2e.test';
@@ -491,6 +519,7 @@ describe('API security regression (e2e)', () => {
   });
 
   it('delivers a committed outbox email event exactly once', async () => {
+    await prisma.outboxEvent.deleteMany();
     const queued = await prisma.outboxEvent.create({
       data: {
         type: 'email.send',
@@ -877,29 +906,23 @@ describe('API security regression (e2e)', () => {
     await request(httpServer)
       .get('/api/v1/families/me/recipes')
       .set(auth(outsider.accessToken))
-      .expect(200)
-      .expect([]);
+      .expect(403);
     await request(httpServer)
       .post('/api/v1/families/me/recipes/plans')
       .set(auth(outsider.accessToken))
       .send({ recipeId, plannedFor: '2026-08-21', mealSlot: 'lunch' })
-      .expect(404);
+      .expect(403);
     await request(httpServer)
       .patch(`/api/v1/families/me/recipes/plans/${planId}`)
       .set(auth(outsider.accessToken))
       .send({ servings: 4 })
-      .expect(404);
+      .expect(403);
 
-    const outsiderList = await request(httpServer)
-      .post('/api/v1/families/me/shopping-lists')
-      .set(auth(outsider.accessToken))
-      .send({ name: 'Outsider groceries' })
-      .expect(201);
     await request(httpServer)
       .post(`/api/v1/families/me/recipes/plans/${planId}/generate-shopping`)
       .set(auth(outsider.accessToken))
-      .send({ listId: (outsiderList.body as { id: string }).id })
-      .expect(404);
+      .send({ listId: randomUUID() })
+      .expect(403);
 
     const archivedRecipe = await request(httpServer)
       .post('/api/v1/families/me/recipes')

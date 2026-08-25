@@ -764,6 +764,33 @@ bucket CORS. Миграция не нужна. Frontend должен повто�
 
 # 2026-08-25 Wellbeing static route ordering repair
 
+## 2026-08-25 Direct S3 multipart smoke
+
+Добавлен ручной `npm run test:s3:smoke` для локального API. Скрипт намеренно допускает
+только loopback URL, создаёт временную семью и проверяет реальный private Selectel S3:
+multipart upload image/video/audio, статус загруженной части, WebP preview, доступ другого
+члена семьи, HTTP Range `206`, download attachment и abort незавершённой сессии. Он удаляет
+созданные media через API; временные записи пользователей и семьи после прогона должны быть
+удалены из локальной БД по префиксу `s3-smoke-`.
+
+Проверка 2026-08-25: smoke PASS. Тестовые семьи и пользователи удалены, S3-объекты удалены
+через штатные API/cleanup paths. В Swagger исправлен enum `MediaUploadStatusDto`: добавлен
+реальный terminal status `FAILED`.
+
+Следом: атомарно ротировать `TELEGRAM_INTEGRATION_SECRET` в GitHub Environment production и
+внешнем Telegram transport, затем выполнить обычный deploy. Нельзя менять только серверный
+`.env`: это разорвёт интеграцию до следующей синхронизации конфигурации.
+
+## 2026-08-25 Логи, E2E wellbeing и S3 smoke
+
+- Pino больше не записывает `Cookie` и `x-telegram-integration-secret`; список redaction вынесен в `HTTP_LOG_REDACT_PATHS` и покрыт unit-тестом.
+- Добавлен E2E-регрессионный тест для статических wellbeing-маршрутов: `consents`, `shared-with-me`, `assessments`, `trends`, `gratitudes`, `support-requests`, `rituals`, `couple-meetings`. Catch-all `:id` больше не может перехватить их без падения теста.
+- E2E-запуск изолирован от локального `.env`, использует отдельную БД `localhost:55432` и теперь работает одинаково в PowerShell и POSIX-оболочках через `npm run test:e2e`.
+- Read-only smoke из работающего API-контейнера подтвердил доступ к приватному Selectel S3 бакету (`HeadBucket`). Для destructive smoke multipart upload/abort/retry, preview и video/audio range-streaming нужна отдельная временная учётная запись и последующее удаление всех созданных объектов; этот прогон не должен выполняться на пользовательских данных.
+- Ротация `TELEGRAM_INTEGRATION_SECRET` должна быть атомарной: сначала обновить GitHub Environment `production` и внешний Telegram transport одним значением, затем развернуть API. Нельзя менять только API `.env`, иначе интеграция станет недоступна до следующего deploy.
+
+Проверки: `npm run test:e2e` — 13/13, targeted Jest — 10/10, S3 `HeadBucket` — PASS. Рекомендуемый следующий шаг: выполнить destructive S3 smoke из временной учётной записи после подтверждения изоляции тестовых данных; затем атомарно ротировать Telegram secret во всех двух владельцах конфигурации.
+
 Исправлен production-500 для wellbeing read endpoints. В Express динамические маршруты
 `GET`/`DELETE /check-ins/:id`, объявленные перед статическими, перехватывали сегменты
 `shared-with-me`, `consents`, `assessments`, `trends`, `gratitudes`, `support-requests`,
