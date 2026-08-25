@@ -1,4 +1,4 @@
-import { HTTP_LOG_REDACT_PATHS } from './app.module';
+import { HTTP_LOG_REDACT_PATHS } from './common/logging/http-log-redaction';
 
 describe('HTTP logger configuration', () => {
   it('redacts credentials and Telegram integration secrets from request logs', () => {

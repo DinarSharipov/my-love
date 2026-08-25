@@ -764,6 +764,18 @@ bucket CORS. Миграция не нужна. Frontend должен повто�
 
 # 2026-08-25 Wellbeing static route ordering repair
 
+## 2026-08-25 CI environment-independent log redaction test
+
+Workflow для `eb89398` остановился на unit-тестах до сборки образа: новый тест импортировал
+`AppModule`, поэтому в GitHub CI без локального `.env` запускалась production-валидация
+обязательных S3-настроек. Константа `HTTP_LOG_REDACT_PATHS` вынесена в независимый модуль
+`src/common/logging/http-log-redaction.ts`; unit-тест больше не создаёт Nest ConfigModule и не
+зависит от deployment secrets. Проверки после исправления: Jest 37/37, lint, build, format-check
+и diff-check PASS.
+
+Правило: конфигурационные константы, которые проверяются unit-тестом, не должны импортироваться
+из composition root (`AppModule`), если их можно вынести в чистый модуль.
+
 ## 2026-08-25 Direct S3 multipart smoke
 
 Добавлен ручной `npm run test:s3:smoke` для локального API. Скрипт намеренно допускает
