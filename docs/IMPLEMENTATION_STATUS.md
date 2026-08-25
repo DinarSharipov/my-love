@@ -831,3 +831,17 @@ Telegram Bot API transport остаётся в отдельном репозит
 хосте не изменяется. Backend production deploy передаёт Telegram outbox только по этому URL
 через `TELEGRAM_PROVIDER=http`. Общий `TELEGRAM_INTEGRATION_SECRET` остаётся единственной
 границей credentials между сервисами и должен ротироваться атомарно в обоих GitHub environments.
+
+## 2026-08-25 Telegram HTTP delivery contract hardening
+
+Добавлены unit-тесты `HttpTelegramProvider`: проверяются точный POST-контракт versioned delivery
+envelope, Bearer-аутентификация, обработка неуспешного HTTP-ответа как retryable ошибки outbox и
+fail-closed поведение при отсутствующей конфигурации. Реальные Telegram/S3 credentials в тестах не
+используются и не изменялись.
+
+Проверки: targeted Jest 3/3, полный Jest 38 suites / 134 tests, ESLint, Prettier, build и
+`git diff --check` — PASS.
+
+Следующий безопасный операционный шаг: выполнить отдельную end-to-end доставку через временную
+привязку тестового Telegram-аккаунта и проверить итоговый статус outbox. Ротация
+`TELEGRAM_INTEGRATION_SECRET` отложена по явному решению пользователя.
