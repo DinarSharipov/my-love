@@ -82,6 +82,8 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           PRODUCTION_ENV: ${{ secrets.PRODUCTION_ENV }}
           TELEGRAM_INTEGRATION_SECRET: ${{ secrets.TELEGRAM_INTEGRATION_SECRET }}
+          TELEGRAM_PROVIDER: http
+          TELEGRAM_DELIVERY_URL: https://bot.185.227.144.160.sslip.io/internal/telegram/deliver
           S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
           S3_REGION: ${{ secrets.S3_REGION }}
           S3_BUCKET: ${{ secrets.S3_BUCKET }}
@@ -108,6 +110,8 @@ jobs:
           printf 'S3_PRESIGNED_URL_EXPIRES_IN=%s\n' "$S3_PRESIGNED_URL_EXPIRES_IN"
             printf '%s\n' 'TELEGRAM_INTEGRATION_ENABLED=true'
           printf 'TELEGRAM_INTEGRATION_SECRET=%s\n' "$TELEGRAM_INTEGRATION_SECRET"
+          printf 'TELEGRAM_PROVIDER=%s\n' "$TELEGRAM_PROVIDER"
+          printf 'TELEGRAM_DELIVERY_URL=%s\n' "$TELEGRAM_DELIVERY_URL"
           } | ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" '
             umask 077
             tmp_env=$(mktemp /opt/my-love/.env.XXXXXX)

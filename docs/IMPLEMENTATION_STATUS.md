@@ -822,3 +822,12 @@ multipart upload image/video/audio, статус загруженной част
 `rituals` и `couple-meetings` как идентификаторы check-in. PostgreSQL пытался привести
 эти строки к UUID, что приводило к 500. Catch-all маршруты перемещены в конец
 контроллера; статические endpoints теперь регистрируются первыми. Миграции не требуются.
+
+## 2026-08-25 Separate Telegram TLS transport
+
+Telegram Bot API transport остаётся в отдельном репозитории и на отдельном сервере. Его
+выделенный Caddy container обслуживает HTTPS
+`https://bot.185.227.144.160.sslip.io/internal/telegram/deliver`; frontend Nginx на том же
+хосте не изменяется. Backend production deploy передаёт Telegram outbox только по этому URL
+через `TELEGRAM_PROVIDER=http`. Общий `TELEGRAM_INTEGRATION_SECRET` остаётся единственной
+границей credentials между сервисами и должен ротироваться атомарно в обоих GitHub environments.
