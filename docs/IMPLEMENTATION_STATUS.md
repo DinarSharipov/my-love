@@ -764,6 +764,19 @@ bucket CORS. Миграция не нужна. Frontend должен повто�
 
 # 2026-08-25 Wellbeing static route ordering repair
 
+## 2026-08-25 Telegram gateway deployment ownership repair
+
+Production обнаружил crash loop `telegram-bot`: compose пытался выполнить
+`dist/telegram-gateway/main.js`, хотя gateway был ранее намеренно удалён из этого
+backend-репозитория. Устаревшие service `telegram-bot`, Caddy virtual host и автоматическая
+регистрация webhook удалены из backend deployment. Обычный API и outbox остаются здесь;
+Telegram Bot API transport, его webhook и секреты разворачиваются и ротируются только в
+выделенном transport-репозитории/окружении.
+
+Это предотвращает повторное создание несуществующего контейнера при каждом backend deploy.
+Ротация `TELEGRAM_INTEGRATION_SECRET` по-прежнему требует одной согласованной замены в GitHub
+Environment `production` backend и в конфигурации внешнего transport до следующего deploy.
+
 ## 2026-08-25 CI environment-independent log redaction test
 
 Workflow для `eb89398` остановился на unit-тестах до сборки образа: новый тест импортировал
