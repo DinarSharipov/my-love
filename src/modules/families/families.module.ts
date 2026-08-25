@@ -7,10 +7,22 @@ import { FamilyInvitationsController } from './family-invitations.controller';
 import { FamilyInvitationsService } from './family-invitations.service';
 import { ChildProfilesController } from './child-profiles.controller';
 import { ChildProfilesService } from './child-profiles.service';
+import { EmergencyContactsController } from './emergency-contacts.controller';
+import { EmergencyContactsService } from './emergency-contacts.service';
 
 @Module({
   imports: [FamilyMembersModule, NotificationProducerModule],
-  controllers: [FamiliesController, FamilyInvitationsController, ChildProfilesController],
-  providers: [FamiliesService, FamilyInvitationsService, ChildProfilesService],
+  controllers: [
+    FamiliesController,
+    FamilyInvitationsController,
+    ChildProfilesController,
+    EmergencyContactsController,
+  ],
+  providers: [
+    FamiliesService,
+    FamilyInvitationsService,
+    ChildProfilesService,
+    EmergencyContactsService,
+  ],
 })
 export class FamiliesModule {}

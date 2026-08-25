@@ -1,3 +1,109 @@
+# 2026-08-25 Emergency contacts E2E and local deployment
+
+Добавлен адресный E2E-сценарий emergency contacts: проверяются нормализация
+входных полей, family isolation, archive с `If-Match`, отсутствие контакта в
+active list, archived list и restore вторым партнёром. Чужая семья не может
+изменить или восстановить контакт. На чистой БД сценариев теперь 14/14.
+
+Локальный production-like Docker-образ API пересобран; миграция
+`20260825020000_add_emergency_contacts` применена к локальному PostgreSQL.
+Compose-контейнеры healthy, health endpoint подтвердил `database: up`.
+
+Проверки: ESLint, unit tests (34 suites, 125 tests), build, E2E 14/14 с 51
+migrations и `git diff --check` проходят.
+
+Следом: начать этап 6 — зафиксировать ADR и контракт семейных воспоминаний
+(albums/media metadata, visibility, archive и storage boundary) до добавления
+загрузки файлов.
+
+# 2026-08-25 Emergency contacts foundation
+
+Добавлен семейный emergency contacts backend: partner-only CRUD API
+`/families/me/emergency-contacts`, archived list и restore, optional `If-Match`,
+atomic audit и reversible archive. Контакт не является User или FamilyMember и
+хранит только name, relationship, phone и optional email.
+
+Добавлены ADR 0007 и миграция `20260825020000_add_emergency_contacts`; medical,
+school, custody и свободные sensitive notes намеренно исключены до отдельной
+privacy/visibility policy. API аддитивен; frontend не изменялся.
+
+Проверки: Prisma validate/generate, lint, build, `npm test` (34 suites, 125 tests),
+`npm run test:e2e:verify` (13/13, чистая БД с 51 migrations) и `git diff --check`.
+Следом: добавить адресный emergency-contacts E2E/unit coverage и применить migration
+при следующем локальном Docker image rebuild.
+
+# 2026-08-25 Child lifecycle E2E coverage
+
+Расширен E2E critical path child profiles: создаются child profile, task, routine и
+family event с `childId`; archive с `If-Match` сохраняет все три связи, скрывает
+профиль из active list, restore вторым партнёром возвращает его, а пользователь
+другой семьи получает `404`. Сценарий выполняется на чистой БД.
+
+`POST /families/me/children/:id/restore` теперь явно возвращает `200 OK` вместо
+неявного NestJS `201`, что соответствует Swagger `ApiOkResponse` и остальным
+restore lifecycle endpoints. Миграции и frontend не менялись.
+
+Проверки: ESLint, E2E 13/13 с последовательным применением 50 migrations и
+`git diff --check` проходят. Следом: read-only сверка frontend RTK Query contracts
+для child lifecycle и передача точного integration follow-up frontend-агенту.
+
+# 2026-08-25 Child profile lifecycle and audit hardening
+
+Child profiles получили reversible lifecycle: `DELETE /families/me/children/:id`
+теперь архивирует профиль вместо физического удаления, `GET .../archived` возвращает
+архив, а `POST .../:id/restore` восстанавливает его. Create/update/archive/restore
+доступны только партнёрам, поддерживают optional `If-Match` и атомарно пишут audit
+event. Связанные tasks, routines и events сохраняют `childId`; export доступен также
+для архивного профиля и включает его lifecycle fields.
+
+Добавлена миграция `20260825010000_add_child_profile_lifecycle` (`archived`,
+`archivedAt`, `version` и index). API расширен аддитивно, прежний DELETE сохраняет
+HTTP 204; medical/school data намеренно не добавлялись без отдельной visibility policy.
+
+Проверки: Prisma Client regenerated, `npm run lint`, `npm test` (34 suites, 125 tests),
+`npm run build`, `npm run test:e2e:verify` (12/12 на чистой БД с 50 migrations) и
+`git diff --check` проходят.
+
+Следом: расширить E2E critical path child lifecycle и сверить frontend RTK Query
+контракты перед подключением UI; frontend-репозиторий не изменялся.
+
+# 2026-08-25 Meals shopping-list idempotency hardening
+
+Исправлена генерация shopping items из meal plan: идемпотентный `sourceKey` теперь
+включает destination `shoppingListId`, поэтому генерация одного плана в другой
+список не переносит ранее созданные позиции. Повторная генерация в том же списке
+по-прежнему не создаёт дубликатов и не перезаписывает name/quantity/check state,
+изменённые пользователем. API не менялся.
+
+Добавлена миграция `20260825000000_scope_meal_shopping_source_key_to_list`: она
+преобразует существующие generated keys, сохраняя строки и пользовательские правки.
+Миграция применена к локальному Docker PostgreSQL; образ API пересобран, все
+контейнеры healthy, health API подтверждает доступность database.
+
+Проверки: `prisma validate`, `prisma generate`, Meals Jest 15/15, полный `npm test`
+(34 suites, 125 tests), `npm run format:check`, `npm run lint`, `npm run build`,
+`npm run test:e2e:verify` (12/12, чистая БД с 49 migrations) и `git diff --check`.
+
+Следом: продолжить этап 5 с lifecycle child profiles — зафиксировать archive/delete
+policy и добавить audit/contract coverage, не вводя medical/school data без отдельной
+visibility-модели.
+
+# 2026-08-25 Release smoke and E2E regression
+
+Выполнен release smoke на локальном Docker Compose: контейнеры `api`, `postgres`
+и `mailpit` healthy, `GET http://localhost:5001/api/v1/health` вернул
+`{"status":"ok","database":"up"}`. Чистый изолированный E2E-прогон применил
+все 48 Prisma migrations и прошёл 12/12 сценариев.
+
+Исправлен E2E-сценарий межсемейной изоляции meals: проверяющий пользователь теперь
+состоит в отдельной активной семье. Это проверяет фактическую cross-family policy,
+а не отсутствие membership; API и миграции не менялись. Полный набор локальных
+проверок проходит: `npm run format:check`, `npm run lint`, `npm test` (34 suites,
+124 tests), `npm run build`, `npm run test:e2e:verify` и `git diff --check`.
+
+Следом: завершить продуктовый срез этапа 5 — сверить child profiles и meals с
+документированными lifecycle/privacy rules, закрыть выявленные contract/test gaps.
+
 # 2026-08-20 Local Docker refresh
 
 Обновлены базовые Docker-образы PostgreSQL и Mailpit, production-образ API

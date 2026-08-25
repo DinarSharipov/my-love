@@ -19,6 +19,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ConcurrencyVersion } from '../../common/decorators/concurrency-version.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { ChildProfilesService } from './child-profiles.service';
@@ -45,6 +46,11 @@ export class ChildProfilesController {
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.children.list(user.id);
   }
+  @Get('archived')
+  @ApiOkResponse({ type: [ChildProfileResponseDto] })
+  listArchived(@CurrentUser() user: AuthenticatedUser) {
+    return this.children.listArchived(user.id);
+  }
   @Get(':id/export')
   @ApiOkResponse({ type: ChildProfileExportDto })
   @ApiNotFoundResponse()
@@ -58,14 +64,29 @@ export class ChildProfilesController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: UpdateChildProfileDto,
+    @ConcurrencyVersion() expectedVersion?: number,
   ) {
-    return this.children.update(user.id, id, dto);
+    return this.children.update(user.id, id, dto, expectedVersion);
+  }
+  @Post(':id/restore')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: ChildProfileResponseDto })
+  restore(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @ConcurrencyVersion() expectedVersion?: number,
+  ) {
+    return this.children.restore(user.id, id, expectedVersion);
   }
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiNoContentResponse()
   @ApiNotFoundResponse()
-  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.children.remove(user.id, id);
+  archive(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @ConcurrencyVersion() expectedVersion?: number,
+  ) {
+    return this.children.archive(user.id, id, expectedVersion);
   }
 }

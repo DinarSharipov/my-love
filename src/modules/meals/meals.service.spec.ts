@@ -285,6 +285,54 @@ describe('MealsService', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it('keeps generated shopping items idempotent per plan and shopping list', async () => {
+    const tx = { shoppingItem: { upsert: jest.fn().mockResolvedValue({ id: 'item-id' }) } };
+    const prisma = {
+      mealPlan: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'plan-id',
+          recipe: { ingredients: [{ id: 'ingredient-id', name: 'Tomato', quantity: '2 pcs' }] },
+        }),
+      },
+      shoppingList: { findFirst: jest.fn().mockResolvedValue({ id: 'list-id' }) },
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => Promise<unknown>) =>
+        callback(tx),
+      ),
+    };
+    const service = new MealsService(
+      prisma as never,
+      membership as never,
+      audit as never,
+      notifications as never,
+    );
+
+    await service.generateShopping('user-id', 'plan-id', 'list-a');
+    await service.generateShopping('user-id', 'plan-id', 'list-b');
+
+    expect(tx.shoppingItem.upsert).toHaveBeenNthCalledWith(1, {
+      where: { sourceKey: 'meal-plan:plan-id:list:list-a:ingredient:ingredient-id' },
+      create: {
+        listId: 'list-a',
+        addedById: 'user-id',
+        name: 'Tomato',
+        quantity: '2 pcs',
+        sourceKey: 'meal-plan:plan-id:list:list-a:ingredient:ingredient-id',
+      },
+      update: { listId: 'list-a' },
+    });
+    expect(tx.shoppingItem.upsert).toHaveBeenNthCalledWith(2, {
+      where: { sourceKey: 'meal-plan:plan-id:list:list-b:ingredient:ingredient-id' },
+      create: {
+        listId: 'list-b',
+        addedById: 'user-id',
+        name: 'Tomato',
+        quantity: '2 pcs',
+        sourceKey: 'meal-plan:plan-id:list:list-b:ingredient:ingredient-id',
+      },
+      update: { listId: 'list-b' },
+    });
+  });
+
   it('updates a plan in the caller family only when its supplied version matches', async () => {
     const updatedPlan = { id: 'plan-id', version: 3, recipe: { name: 'Pasta' } };
     const prisma = {

@@ -30,6 +30,9 @@ export class ChildProfileResponseDto {
   @ApiPropertyOptional() lastName: string | null;
   @ApiProperty() birthDate: Date;
   @ApiPropertyOptional() avatarUrl: string | null;
+  @ApiProperty() archived: boolean;
+  @ApiPropertyOptional({ nullable: true }) archivedAt: Date | null;
+  @ApiProperty() version: number;
   @ApiProperty() createdAt: Date;
   @ApiProperty() updatedAt: Date;
 }

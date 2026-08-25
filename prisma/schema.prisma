@@ -237,6 +237,7 @@ model Family {
   wellbeingRituals         WellbeingRitual[]
   wellbeingCoupleMeetings  WellbeingCoupleMeeting[]
   childProfiles            ChildProfile[]
+  emergencyContacts        EmergencyContact[]
   recipes                  Recipe[]
   mealPlans                MealPlan[]
 
@@ -583,6 +584,9 @@ model ChildProfile {
   lastName     String?       @map("last_name") @db.VarChar(100)
   birthDate    DateTime      @map("birth_date") @db.Date
   avatarUrl    String?       @map("avatar_url") @db.VarChar(1000)
+  archived     Boolean       @default(false)
+  archivedAt   DateTime?     @map("archived_at")
+  version      Int           @default(1)
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
   family       Family        @relation(fields: [familyId], references: [id], onDelete: Cascade)
@@ -591,7 +595,26 @@ model ChildProfile {
   taskRoutines TaskRoutine[]
 
   @@index([familyId, firstName])
+  @@index([familyId, archived, updatedAt])
   @@map("child_profiles")
+}
+
+model EmergencyContact {
+  id           String   @id @default(uuid()) @db.Uuid
+  familyId     String   @map("family_id") @db.Uuid
+  name         String   @db.VarChar(160)
+  relationship String   @db.VarChar(100)
+  phone        String   @db.VarChar(32)
+  email        String?  @db.VarChar(320)
+  archived     Boolean  @default(false)
+  archivedAt   DateTime? @map("archived_at")
+  version      Int      @default(1)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  family       Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([familyId, archived, updatedAt])
+  @@map("emergency_contacts")
 }
 
 model FamilyInvitation {

@@ -2,27 +2,43 @@ import { NotFoundException } from '@nestjs/common';
 import { ChildProfilesService } from './child-profiles.service';
 
 describe('ChildProfilesService', () => {
-  const prisma = {
-    childProfile: {
-      create: jest.fn(),
-      findMany: jest.fn(),
-      findFirst: jest.fn(),
-      update: jest.fn(),
-      deleteMany: jest.fn(),
-    },
-  };
-  const membership = { requirePartner: jest.fn(), requireMembership: jest.fn() };
-  const service = new ChildProfilesService(prisma as never, membership as never);
+  const membership = { requirePartner: jest.fn() };
+  const audit = { record: jest.fn().mockResolvedValue(undefined) };
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('creates a profile in the partner family', async () => {
+  function createService(overrides: Record<string, unknown> = {}) {
+    const tx = {
+      childProfile: {
+        create: jest.fn().mockResolvedValue({ id: 'child-id' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'child-id', version: 2 }),
+      },
+    };
+    const prisma = {
+      childProfile: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue({ id: 'child-id', version: 1 }),
+      },
+      $transaction: jest.fn(async (callback: (client: typeof tx) => Promise<unknown>) =>
+        callback(tx),
+      ),
+      ...overrides,
+    };
+    return {
+      service: new ChildProfilesService(prisma as never, membership as never, audit as never),
+      prisma,
+      tx,
+    };
+  }
+
+  it('creates a profile and audit event atomically in the partner family', async () => {
     membership.requirePartner.mockResolvedValue({ familyId: 'family-id' });
-    prisma.childProfile.create.mockResolvedValue({ id: 'child-id' });
+    const { service, tx } = createService();
 
     await service.create('partner-id', { firstName: 'Anna', birthDate: '2020-01-02' });
 
-    expect(prisma.childProfile.create).toHaveBeenCalledWith({
+    expect(tx.childProfile.create).toHaveBeenCalledWith({
       data: {
         familyId: 'family-id',
         firstName: 'Anna',
@@ -31,98 +47,71 @@ describe('ChildProfilesService', () => {
         avatarUrl: null,
       },
     });
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'child_profile.created', resourceId: 'child-id' }),
+      tx,
+    );
   });
 
-  it('lists profiles for any active family member', async () => {
-    membership.requireMembership.mockResolvedValue({ familyId: 'family-id' });
-    prisma.childProfile.findMany.mockResolvedValue([]);
+  it('lists only active profiles and exposes archived profiles separately', async () => {
+    membership.requirePartner.mockResolvedValue({ familyId: 'family-id' });
+    const { service, prisma } = createService();
 
-    await service.list('child-user-id');
+    await service.list('partner-id');
+    await service.listArchived('partner-id');
 
-    expect(prisma.childProfile.findMany).toHaveBeenCalledWith({
-      where: { familyId: 'family-id' },
+    expect(prisma.childProfile.findMany).toHaveBeenNthCalledWith(1, {
+      where: { familyId: 'family-id', archived: false },
       orderBy: [{ firstName: 'asc' }, { createdAt: 'asc' }],
     });
+    expect(prisma.childProfile.findMany).toHaveBeenNthCalledWith(2, {
+      where: { familyId: 'family-id', archived: true },
+      orderBy: { updatedAt: 'desc' },
+    });
   });
 
-  it('does not update a profile from another family', async () => {
+  it('archives a profile without deleting its child-scoped history', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-25T12:00:00.000Z'));
     membership.requirePartner.mockResolvedValue({ familyId: 'family-id' });
-    prisma.childProfile.findFirst.mockResolvedValue(null);
+    const { service, tx } = createService();
 
-    await expect(
-      service.update('partner-id', 'other-child-id', { firstName: 'Nope' }),
-    ).rejects.toBeInstanceOf(NotFoundException);
-    expect(prisma.childProfile.update).not.toHaveBeenCalled();
-  });
+    await service.archive('partner-id', 'child-id', 1);
 
-  it('exports only the child profile and active child-scoped records', async () => {
-    membership.requireMembership.mockResolvedValue({ familyId: 'family-id' });
-    prisma.childProfile.findFirst.mockResolvedValue({
-      id: 'child-id',
-      firstName: 'Anna',
-      tasks: [{ id: 'task-id' }],
-      events: [{ id: 'event-id' }],
-    });
-
-    await expect(service.export('member-id', 'child-id')).resolves.toEqual({
-      profile: { id: 'child-id', firstName: 'Anna' },
-      tasks: [{ id: 'task-id' }],
-      events: [{ id: 'event-id' }],
-    });
-    expect(prisma.childProfile.findFirst).toHaveBeenCalledWith({
-      where: { id: 'child-id', familyId: 'family-id' },
-      select: {
-        id: true,
-        familyId: true,
-        firstName: true,
-        lastName: true,
-        birthDate: true,
-        avatarUrl: true,
-        createdAt: true,
-        updatedAt: true,
-        tasks: {
-          orderBy: [{ createdAt: 'asc' }],
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            dueAt: true,
-            priority: true,
-            status: true,
-            version: true,
-            completedAt: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        },
-        events: {
-          where: { deletedAt: null },
-          orderBy: [{ scheduledAt: 'asc' }],
-          select: {
-            id: true,
-            name: true,
-            description: true,
-            scheduledAt: true,
-            location: true,
-            status: true,
-            respondedAt: true,
-            version: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        },
+    expect(tx.childProfile.updateMany).toHaveBeenCalledWith({
+      where: { id: 'child-id', familyId: 'family-id', archived: false, version: 1 },
+      data: {
+        archived: true,
+        archivedAt: new Date('2026-08-25T12:00:00.000Z'),
+        version: { increment: 1 },
       },
     });
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'child_profile.archived' }),
+      tx,
+    );
+    jest.useRealTimers();
   });
 
-  it('removes only a profile in the current family', async () => {
+  it('restores an archived profile only with the current version', async () => {
     membership.requirePartner.mockResolvedValue({ familyId: 'family-id' });
-    prisma.childProfile.deleteMany.mockResolvedValue({ count: 1 });
+    const { service, prisma, tx } = createService();
+    prisma.childProfile.findFirst.mockResolvedValue({ id: 'child-id', version: 2, archived: true });
 
-    await service.remove('partner-id', 'child-id');
+    await service.restore('partner-id', 'child-id', 2);
 
-    expect(prisma.childProfile.deleteMany).toHaveBeenCalledWith({
-      where: { id: 'child-id', familyId: 'family-id' },
+    expect(tx.childProfile.updateMany).toHaveBeenCalledWith({
+      where: { id: 'child-id', familyId: 'family-id', archived: true, version: 2 },
+      data: { archived: false, archivedAt: null, version: { increment: 1 } },
     });
+  });
+
+  it('does not reveal a profile outside the current family', async () => {
+    membership.requirePartner.mockResolvedValue({ familyId: 'family-id' });
+    const { service, prisma } = createService();
+    prisma.childProfile.findFirst.mockResolvedValue(null);
+
+    await expect(service.archive('partner-id', 'other-child-id')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

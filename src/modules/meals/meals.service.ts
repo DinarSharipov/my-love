@@ -263,13 +263,13 @@ export class MealsService {
       Promise.all(
         plan.recipe.ingredients.map((ingredient) =>
           tx.shoppingItem.upsert({
-            where: { sourceKey: `meal-plan:${plan.id}:ingredient:${ingredient.id}` },
+            where: { sourceKey: this.shoppingSourceKey(plan.id, listId, ingredient.id) },
             create: {
               listId,
               addedById: userId,
               name: ingredient.name,
               quantity: ingredient.quantity,
-              sourceKey: `meal-plan:${plan.id}:ingredient:${ingredient.id}`,
+              sourceKey: this.shoppingSourceKey(plan.id, listId, ingredient.id),
             },
             update: { listId },
           }),
@@ -296,6 +296,10 @@ export class MealsService {
 
   private normalizeDietaryLabels(labels: string[]): string[] {
     return [...new Set(labels.map((label) => label.trim().toLowerCase()).filter(Boolean))];
+  }
+
+  private shoppingSourceKey(planId: string, listId: string, ingredientId: string): string {
+    return `meal-plan:${planId}:list:${listId}:ingredient:${ingredientId}`;
   }
 
   private async recordAndNotifyRecipe(

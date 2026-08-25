@@ -846,12 +846,14 @@ describe('API security regression (e2e)', () => {
   });
 
   it('keeps meal recipes, plans, and shopping generation inside the family boundary', async () => {
-    const [alice, bob, outsider] = await Promise.all([
+    const [alice, bob, outsider, outsiderPartner] = await Promise.all([
       register('MealsAlice'),
       register('MealsBob'),
       register('MealsOutsider'),
+      register('MealsOutsiderPartner'),
     ]);
     await createFamily(alice, bob);
+    await createFamily(outsider, outsiderPartner);
 
     const recipe = await request(httpServer)
       .post('/api/v1/families/me/recipes')
@@ -916,5 +918,159 @@ describe('API security regression (e2e)', () => {
       .set(auth(alice.accessToken))
       .send({ recipeId: archivedRecipeId, plannedFor: '2026-08-22', mealSlot: 'breakfast' })
       .expect(404);
+  });
+
+  it('archives and restores a child profile without losing child-scoped history', async () => {
+    const [alice, bob, outsider, outsiderPartner] = await Promise.all([
+      register('ChildLifecycleAlice'),
+      register('ChildLifecycleBob'),
+      register('ChildLifecycleOutsider'),
+      register('ChildLifecycleOutsiderPartner'),
+    ]);
+    await createFamily(alice, bob);
+    await createFamily(outsider, outsiderPartner);
+
+    const childResponse = await request(httpServer)
+      .post('/api/v1/families/me/children')
+      .set(auth(alice.accessToken))
+      .send({ firstName: 'Anna', birthDate: '2020-01-02' })
+      .expect(201);
+    const child = childResponse.body as { id: string; version: number; archived: boolean };
+    expect(child.archived).toBe(false);
+
+    const task = await request(httpServer)
+      .post('/api/v1/families/me/tasks')
+      .set(auth(alice.accessToken))
+      .send({ title: 'School bag', childId: child.id })
+      .expect(201);
+    const routine = await request(httpServer)
+      .post('/api/v1/families/me/task-routines')
+      .set(auth(alice.accessToken))
+      .send({
+        title: 'Reading',
+        childId: child.id,
+        frequency: 'DAILY',
+        interval: 1,
+        nextRunAt: '2030-01-01T09:00:00.000Z',
+      })
+      .expect(201);
+    const event = await request(httpServer)
+      .post('/api/v1/family-events')
+      .set(auth(alice.accessToken))
+      .send({
+        name: 'School event',
+        childId: child.id,
+        location: 'School',
+        scheduledAt: '2030-01-02T09:00:00.000Z',
+      })
+      .expect(201);
+
+    await request(httpServer)
+      .delete(`/api/v1/families/me/children/${child.id}`)
+      .set(auth(alice.accessToken))
+      .set('If-Match', String(child.version))
+      .expect(204);
+    await request(httpServer)
+      .get('/api/v1/families/me/children')
+      .set(auth(alice.accessToken))
+      .expect(200)
+      .expect([]);
+    const archived = await request(httpServer)
+      .get('/api/v1/families/me/children/archived')
+      .set(auth(alice.accessToken))
+      .expect(200);
+    const archivedChild = (archived.body as Array<{ id: string; version: number }>)[0];
+    expect(archivedChild?.id).toBe(child.id);
+    expect(
+      await prisma.task.findUnique({ where: { id: (task.body as { id: string }).id } }),
+    ).toMatchObject({ childId: child.id });
+    expect(
+      await prisma.taskRoutine.findUnique({ where: { id: (routine.body as { id: string }).id } }),
+    ).toMatchObject({ childId: child.id });
+    expect(
+      await prisma.familyEvent.findUnique({ where: { id: (event.body as { id: string }).id } }),
+    ).toMatchObject({ childId: child.id });
+
+    await request(httpServer)
+      .post(`/api/v1/families/me/children/${child.id}/restore`)
+      .set(auth(outsider.accessToken))
+      .set('If-Match', String(archivedChild?.version))
+      .expect(404);
+    const restored = await request(httpServer)
+      .post(`/api/v1/families/me/children/${child.id}/restore`)
+      .set(auth(bob.accessToken))
+      .set('If-Match', String(archivedChild?.version))
+      .expect(200);
+    expect(restored.body).toMatchObject({ id: child.id, archived: false });
+  });
+
+  it('keeps emergency contacts family-scoped through archive and restore', async () => {
+    const [alice, bob, outsider, outsiderPartner] = await Promise.all([
+      register('EmergencyContactAlice'),
+      register('EmergencyContactBob'),
+      register('EmergencyContactOutsider'),
+      register('EmergencyContactOutsiderPartner'),
+    ]);
+    await createFamily(alice, bob);
+    await createFamily(outsider, outsiderPartner);
+
+    const created = await request(httpServer)
+      .post('/api/v1/families/me/emergency-contacts')
+      .set(auth(alice.accessToken))
+      .send({
+        name: '  Elena Ivanova  ',
+        relationship: '  Sister  ',
+        phone: '  +7 900 000-00-00  ',
+        email: 'ELENA@EXAMPLE.TEST',
+      })
+      .expect(201);
+    const contact = created.body as { id: string; version: number };
+    expect(created.body).toMatchObject({
+      name: 'Elena Ivanova',
+      relationship: 'Sister',
+      phone: '+7 900 000-00-00',
+      email: 'elena@example.test',
+      archived: false,
+    });
+
+    await request(httpServer)
+      .get('/api/v1/families/me/emergency-contacts')
+      .set(auth(outsider.accessToken))
+      .expect(200)
+      .expect([]);
+    await request(httpServer)
+      .patch(`/api/v1/families/me/emergency-contacts/${contact.id}`)
+      .set(auth(outsider.accessToken))
+      .send({ relationship: 'Friend' })
+      .expect(404);
+
+    await request(httpServer)
+      .delete(`/api/v1/families/me/emergency-contacts/${contact.id}`)
+      .set(auth(alice.accessToken))
+      .set('If-Match', String(contact.version))
+      .expect(204);
+    await request(httpServer)
+      .get('/api/v1/families/me/emergency-contacts')
+      .set(auth(bob.accessToken))
+      .expect(200)
+      .expect([]);
+    const archived = await request(httpServer)
+      .get('/api/v1/families/me/emergency-contacts/archived')
+      .set(auth(bob.accessToken))
+      .expect(200);
+    const archivedContact = (archived.body as Array<{ id: string; version: number }>)[0];
+    expect(archivedContact?.id).toBe(contact.id);
+
+    await request(httpServer)
+      .post(`/api/v1/families/me/emergency-contacts/${contact.id}/restore`)
+      .set(auth(outsider.accessToken))
+      .set('If-Match', String(archivedContact?.version))
+      .expect(404);
+    const restored = await request(httpServer)
+      .post(`/api/v1/families/me/emergency-contacts/${contact.id}/restore`)
+      .set(auth(bob.accessToken))
+      .set('If-Match', String(archivedContact?.version))
+      .expect(200);
+    expect(restored.body).toMatchObject({ id: contact.id, archived: false });
   });
 });
