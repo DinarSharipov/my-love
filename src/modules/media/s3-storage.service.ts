@@ -29,7 +29,9 @@ export class S3StorageService {
     this.client = new S3Client({
       endpoint: config.getOrThrow<string>('S3_ENDPOINT'),
       region: config.getOrThrow<string>('S3_REGION'),
-      forcePathStyle: true,
+      // Selectel only serves browser CORS preflight requests for Virtual-Hosted URLs.
+      // Path-style presigned part URLs therefore cannot be used for direct browser uploads.
+      forcePathStyle: false,
       credentials: {
         accessKeyId: config.getOrThrow<string>('S3_ACCESS_KEY'),
         secretAccessKey: config.getOrThrow<string>('S3_SECRET_KEY'),

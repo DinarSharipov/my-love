@@ -740,3 +740,12 @@ Selectel bucket CORS настроен без раскрытия credential: ра
 Проверки: Prisma format/generate, build, lint, Jest 36 suites / 130 tests, format check и
 `git diff --check`. Следом: применить migration на production через обычный CI deploy и выполнить
 smoke direct multipart upload/abort/retry; frontend repository не изменяется backend-агентом.
+
+# 2026-08-25 Selectel direct-upload CORS fix
+
+Выявлено, что Selectel отдаёт CORS preflight только для Virtual-Hosted адресации. Backend больше не
+использует `forcePathStyle` при создании S3 client, поэтому presigned multipart URLs имеют вид
+`<bucket>.<endpoint>/...`, а не path-style `/<bucket>/...`. Реальная проверка OPTIONS с origin
+`http://localhost:5174` вернула `200` и CORS headers; origin `http://localhost:5174` добавлен в
+bucket CORS. Миграция не нужна. Frontend должен повторить `initiate` после перезапуска локального API:
+старые path-style presigned URLs останутся неработоспособны в браузере.
