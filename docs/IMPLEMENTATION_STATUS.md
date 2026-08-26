@@ -845,3 +845,35 @@ fail-closed поведение при отсутствующей конфигу�
 Следующий безопасный операционный шаг: выполнить отдельную end-to-end доставку через временную
 привязку тестового Telegram-аккаунта и проверить итоговый статус outbox. Ротация
 `TELEGRAM_INTEGRATION_SECRET` отложена по явному решению пользователя.
+
+## 2026-08-26 Telegram production end-to-end delivery
+
+Проверена фактическая production-цепочка для уже привязанного аккаунта: backend outbox → HTTPS
+transport → Telegram Bot API. Тестовое событие `TELEGRAM_E2E_PROBE` получило статус `DELIVERED`
+без retry и без ошибки; transport записал `telegram_delivery_sent`. После проверки временная
+учётная запись и тестовая outbox-запись удалены. Secrets и настройки пользователей не менялись.
+
+Во время проверки на сервере отдельного Telegram transport был заполнен системный диск 8.8 GB.
+Безопасно очищены архивные systemd journals и неиспользуемые Docker images; frontend, активные
+контейнеры и PostgreSQL volume не затрагивались. После очистки свободно около 415 MB — перед
+следующим image deploy требуется увеличить диск либо настроить постоянные лимиты journal/Docker
+cache, иначе возможна повторная остановка контейнерных операций.
+
+## 2026-08-26 Child profiles: private S3 avatar binding
+
+Профиль ребёнка теперь может ссылаться на уже загруженный family-scoped image через
+`avatarMediaId`. Миграция `20260826120000_add_child_profile_s3_avatar` хранит nullable ссылку на
+`Media` и отдельный отзывный capability token. `POST` и `PATCH /families/me/children` принимают
+optional `avatarMediaId`; назначать можно только IMAGE той же активной семьи с private WebP preview.
+Чужие объекты, видео, аудио и изображения без preview отклоняются. Ответы create/list/update/export
+содержат `avatarMediaId` и стабильный application `avatarUrl`, ведущий на
+`GET /families/me/children/:id/avatar?token=...`; endpoint отдаёт только WebP preview с Range,
+оригинал остаётся доступен лишь через защищённый media API. При удалении `Media` ссылка ребёнка
+сбрасывается каскадным `ON DELETE SET NULL`; stale capability перестаёт работать.
+
+Старое поле `avatarUrl` сохранено для обратной совместимости внешних avatar URL и возвращается
+только пока private `avatarMediaId` не назначен. Frontend в этом репозитории не изменялся.
+
+Проверки: `prisma generate`, `prisma validate`, полный Jest — 38 suites / 136 tests, format check,
+lint, build и `git diff --check` прошли. Следом: применить migration через обычный production deploy
+и выполнить isolated smoke: image upload → assignment к child profile → preview → media deletion.

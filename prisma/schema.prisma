@@ -241,6 +241,7 @@ model Media {
   createdAt        DateTime  @default(now()) @map("created_at")
   user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   family           Family    @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  childAvatars     ChildProfile[] @relation("ChildProfileAvatarMedia")
 
   @@index([familyId, createdAt])
   @@index([familyId, kind, createdAt])
@@ -669,14 +670,18 @@ model ChildProfile {
   lastName     String?       @map("last_name") @db.VarChar(100)
   birthDate    DateTime      @map("birth_date") @db.Date
   avatarUrl    String?       @map("avatar_url") @db.VarChar(1000)
+  avatarMediaId String?      @map("avatar_media_id") @db.Uuid
+  avatarPreviewToken String? @unique @map("avatar_preview_token") @db.VarChar(64)
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
   family       Family        @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  avatarMedia  Media?        @relation("ChildProfileAvatarMedia", fields: [avatarMediaId], references: [id], onDelete: SetNull)
   tasks        Task[]
   events       FamilyEvent[]
   taskRoutines TaskRoutine[]
 
   @@index([familyId, firstName])
+  @@index([avatarMediaId])
   @@map("child_profiles")
 }
 

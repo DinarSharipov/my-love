@@ -7,10 +7,17 @@ import { FamilyInvitationsController } from './family-invitations.controller';
 import { FamilyInvitationsService } from './family-invitations.service';
 import { ChildProfilesController } from './child-profiles.controller';
 import { ChildProfilesService } from './child-profiles.service';
+import { ChildProfileAvatarController } from './child-profile-avatar.controller';
+import { MediaModule } from '../media/media.module';
 
 @Module({
-  imports: [FamilyMembersModule, NotificationProducerModule],
-  controllers: [FamiliesController, FamilyInvitationsController, ChildProfilesController],
+  imports: [FamilyMembersModule, NotificationProducerModule, MediaModule],
+  controllers: [
+    FamiliesController,
+    FamilyInvitationsController,
+    ChildProfilesController,
+    ChildProfileAvatarController,
+  ],
   providers: [FamiliesService, FamilyInvitationsService, ChildProfilesService],
 })
 export class FamiliesModule {}

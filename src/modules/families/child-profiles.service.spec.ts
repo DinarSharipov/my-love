@@ -10,9 +10,11 @@ describe('ChildProfilesService', () => {
       update: jest.fn(),
       deleteMany: jest.fn(),
     },
+    media: { findFirst: jest.fn() },
   };
   const membership = { requirePartner: jest.fn(), requireMembership: jest.fn() };
-  const service = new ChildProfilesService(prisma as never, membership as never);
+  const storage = { getObjectStream: jest.fn() };
+  const service = new ChildProfilesService(prisma as never, membership as never, storage as never);
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -29,6 +31,8 @@ describe('ChildProfilesService', () => {
         lastName: null,
         birthDate: new Date('2020-01-02'),
         avatarUrl: null,
+        avatarMediaId: undefined,
+        avatarPreviewToken: null,
       },
     });
   });
@@ -65,7 +69,12 @@ describe('ChildProfilesService', () => {
     });
 
     await expect(service.export('member-id', 'child-id')).resolves.toEqual({
-      profile: { id: 'child-id', firstName: 'Anna' },
+      profile: {
+        id: 'child-id',
+        firstName: 'Anna',
+        avatarMediaId: undefined,
+        avatarUrl: undefined,
+      },
       tasks: [{ id: 'task-id' }],
       events: [{ id: 'event-id' }],
     });
@@ -78,6 +87,8 @@ describe('ChildProfilesService', () => {
         lastName: true,
         birthDate: true,
         avatarUrl: true,
+        avatarMediaId: true,
+        avatarPreviewToken: true,
         createdAt: true,
         updatedAt: true,
         tasks: {
@@ -124,5 +135,49 @@ describe('ChildProfilesService', () => {
     expect(prisma.childProfile.deleteMany).toHaveBeenCalledWith({
       where: { id: 'child-id', familyId: 'family-id' },
     });
+  });
+
+  it('allows a partner to attach only a family image with a preview', async () => {
+    membership.requirePartner.mockResolvedValue({ familyId: 'family-id' });
+    prisma.media.findFirst.mockResolvedValue({ id: 'media-id' });
+    prisma.childProfile.create.mockResolvedValue({
+      id: 'child-id',
+      avatarUrl: null,
+      avatarMediaId: 'media-id',
+      avatarPreviewToken: 'preview-token',
+    });
+
+    const result = await service.create('partner-id', {
+      firstName: 'Anna',
+      birthDate: '2020-01-02',
+      avatarMediaId: 'media-id',
+    });
+
+    expect(result.avatarMediaId).toBe('media-id');
+    expect(result.avatarUrl).toContain('/children/child-id/avatar?token=');
+
+    expect(prisma.media.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'media-id',
+        familyId: 'family-id',
+        kind: 'IMAGE',
+        previewObjectKey: { not: null },
+      },
+      select: { id: true },
+    });
+  });
+
+  it('streams only the image preview identified by the capability token', async () => {
+    prisma.childProfile.findFirst.mockResolvedValue({
+      avatarMedia: { previewObjectKey: 'previews/family-id/media-id.webp' },
+    });
+    storage.getObjectStream.mockResolvedValue({ body: {}, contentLength: 1 });
+
+    await service.streamAvatar('child-id', 'preview-token', 'bytes=0-1');
+
+    expect(storage.getObjectStream).toHaveBeenCalledWith(
+      'previews/family-id/media-id.webp',
+      'bytes=0-1',
+    );
   });
 });

@@ -1,5 +1,13 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsDateString, IsOptional, IsString, IsUrl, Length, MaxLength } from 'class-validator';
+import {
+  IsDateString,
+  IsOptional,
+  IsString,
+  IsUrl,
+  IsUUID,
+  Length,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateChildProfileDto {
   @ApiProperty({ minLength: 1, maxLength: 100 })
@@ -19,6 +27,15 @@ export class CreateChildProfileDto {
   @IsUrl({ require_tld: false })
   @MaxLength(1000)
   avatarUrl?: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    nullable: true,
+    description: 'Family image media to use as a private child avatar preview',
+  })
+  @IsOptional()
+  @IsUUID()
+  avatarMediaId?: string | null;
 }
 
 export class UpdateChildProfileDto extends PartialType(CreateChildProfileDto) {}
@@ -30,6 +47,7 @@ export class ChildProfileResponseDto {
   @ApiPropertyOptional() lastName: string | null;
   @ApiProperty() birthDate: Date;
   @ApiPropertyOptional() avatarUrl: string | null;
+  @ApiPropertyOptional({ format: 'uuid', nullable: true }) avatarMediaId: string | null;
   @ApiProperty() createdAt: Date;
   @ApiProperty() updatedAt: Date;
 }
