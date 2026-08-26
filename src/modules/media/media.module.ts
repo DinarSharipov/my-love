@@ -9,6 +9,6 @@ import { FamilyMembersModule } from '../family-members/family-members.module';
   imports: [FamilyMembersModule],
   controllers: [MediaController],
   providers: [MediaService, S3StorageService, ObjectStorageCleanupService],
-  exports: [S3StorageService, ObjectStorageCleanupService],
+  exports: [MediaService, S3StorageService, ObjectStorageCleanupService],
 })
 export class MediaModule {}

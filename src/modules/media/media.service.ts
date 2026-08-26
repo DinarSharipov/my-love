@@ -270,6 +270,18 @@ export class MediaService {
     return this.toResponse(media);
   }
 
+  async findManyByIds(userId: string, ids: string[]): Promise<MediaResponseDto[]> {
+    const { familyId } = await this.membership.requireMembership(userId);
+    const uniqueIds = [...new Set(ids)];
+    if (!uniqueIds.length) return [];
+    const media = await this.prisma.media.findMany({
+      where: { familyId, id: { in: uniqueIds } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    if (media.length !== uniqueIds.length) throw new NotFoundException('Media not found');
+    return Promise.all(media.map((item) => this.toResponse(item)));
+  }
+
   async findMany(userId: string, query: MediaQueryDto): Promise<PaginatedMediaResponseDto> {
     const { familyId } = await this.membership.requireMembership(userId);
     const name = query.name?.trim();

@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { paginationMeta } from '../../common/dto/pagination-response.dto';
 import { VersionConflictException } from '../../common/http/version-conflict.exception';
@@ -17,6 +18,8 @@ import { PaginatedFamilyEventsResponseDto } from './dto/paginated-family-events-
 import { UpdateFamilyEventDto } from './dto/update-family-event.dto';
 import { localDateStartUtc } from './local-date';
 import { NotificationProducerService } from '../../common/notifications/notification-producer.service';
+import { MediaService } from '../media/media.service';
+import { MediaResponseDto } from '../media/dto/media-response.dto';
 
 @Injectable()
 export class FamilyEventsService {
@@ -24,6 +27,7 @@ export class FamilyEventsService {
     private readonly prisma: PrismaService,
     private readonly membership: FamilyMembershipService,
     private readonly notifications: NotificationProducerService,
+    @Optional() private readonly mediaService?: MediaService,
   ) {}
 
   async create(userId: string, dto: CreateFamilyEventDto): Promise<FamilyEventResponseDto> {
@@ -114,6 +118,50 @@ export class FamilyEventsService {
     });
     if (!event) throw new NotFoundException('Family event not found');
     return FamilyEventResponseDto.fromEntity(event, timeZone);
+  }
+
+  async listMedia(eventId: string, userId: string): Promise<MediaResponseDto[]> {
+    const { familyId } = await this.membership.requirePartner(userId);
+    const event = await this.prisma.familyEvent.findFirst({
+      where: { id: eventId, familyId, deletedAt: null },
+      select: { mediaAttachments: { select: { mediaId: true }, orderBy: { createdAt: 'asc' } } },
+    });
+    if (!event) throw new NotFoundException('Family event not found');
+    if (!this.mediaService) throw new Error('MediaService is not available');
+    return this.mediaService.findManyByIds(
+      userId,
+      event.mediaAttachments.map((item) => item.mediaId),
+    );
+  }
+
+  async attachMedia(eventId: string, userId: string, mediaId: string): Promise<MediaResponseDto[]> {
+    const { familyId } = await this.membership.requirePartner(userId);
+    const event = await this.prisma.familyEvent.findFirst({
+      where: { id: eventId, familyId, deletedAt: null },
+      select: { id: true, proposedById: true },
+    });
+    if (!event) throw new NotFoundException('Family event not found');
+    if (event.proposedById !== userId)
+      throw new ForbiddenException('Only the event creator can attach media');
+    const media = await this.prisma.media.findFirst({ where: { id: mediaId, familyId } });
+    if (!media) throw new NotFoundException('Media not found');
+    await this.prisma.familyEventMedia.createMany({
+      data: { familyEventId: event.id, mediaId },
+      skipDuplicates: true,
+    });
+    return this.listMedia(event.id, userId);
+  }
+
+  async detachMedia(eventId: string, userId: string, mediaId: string): Promise<void> {
+    const { familyId } = await this.membership.requirePartner(userId);
+    const event = await this.prisma.familyEvent.findFirst({
+      where: { id: eventId, familyId, deletedAt: null },
+      select: { id: true, proposedById: true },
+    });
+    if (!event) throw new NotFoundException('Family event not found');
+    if (event.proposedById !== userId)
+      throw new ForbiddenException('Only the event creator can detach media');
+    await this.prisma.familyEventMedia.deleteMany({ where: { familyEventId: event.id, mediaId } });
   }
 
   async update(

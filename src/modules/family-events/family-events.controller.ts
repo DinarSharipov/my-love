@@ -31,11 +31,13 @@ import { Idempotent } from '../../common/idempotency/idempotent.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { CreateFamilyEventDto } from './dto/create-family-event.dto';
+import { AttachFamilyEventMediaDto } from './dto/attach-family-event-media.dto';
 import { FamilyEventResponseDto } from './dto/family-event-response.dto';
 import { FamilyEventsQueryDto } from './dto/family-events-query.dto';
 import { PaginatedFamilyEventsResponseDto } from './dto/paginated-family-events-response.dto';
 import { UpdateFamilyEventDto } from './dto/update-family-event.dto';
 import { FamilyEventsService } from './family-events.service';
+import { MediaResponseDto } from '../media/dto/media-response.dto';
 
 @ApiTags('family events')
 @ApiBearerAuth()
@@ -77,6 +79,39 @@ export class FamilyEventsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<FamilyEventResponseDto> {
     return this.eventsService.findOne(id, user.id);
+  }
+
+  @Get(':id/media')
+  @ApiOperation({ summary: 'List media attached to a family event' })
+  @ApiOkResponse({ type: [MediaResponseDto] })
+  listEventMedia(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<MediaResponseDto[]> {
+    return this.eventsService.listMedia(id, user.id);
+  }
+
+  @Post(':id/media')
+  @ApiOperation({ summary: 'Attach family media to an event' })
+  @ApiOkResponse({ type: [MediaResponseDto] })
+  attachEventMedia(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AttachFamilyEventMediaDto,
+  ): Promise<MediaResponseDto[]> {
+    return this.eventsService.attachMedia(id, user.id, dto.mediaId);
+  }
+
+  @Delete(':id/media/:mediaId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Detach media from a family event' })
+  @ApiNoContentResponse()
+  async detachEventMedia(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('mediaId', ParseUUIDPipe) mediaId: string,
+  ): Promise<void> {
+    await this.eventsService.detachMedia(id, user.id, mediaId);
   }
 
   @Patch(':id')

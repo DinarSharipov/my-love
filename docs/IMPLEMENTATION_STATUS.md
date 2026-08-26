@@ -859,6 +859,24 @@ transport → Telegram Bot API. Тестовое событие `TELEGRAM_E2E_PR
 следующим image deploy требуется увеличить диск либо настроить постоянные лимиты journal/Docker
 cache, иначе возможна повторная остановка контейнерных операций.
 
+## 2026-08-26 Family event media attachments
+
+Добавлена many-to-many связь `family_event_media` между семейными событиями и Media.
+Медиафайл можно использовать в нескольких событиях; удаление связи или soft-delete события не удаляет объект S3.
+
+API:
+- `GET /api/v1/family-events/:id/media` — список прикреплённых медиа с метаданными и short-lived URL;
+- `POST /api/v1/family-events/:id/media` с `{ "mediaId": "..." }` — прикрепление;
+- `DELETE /api/v1/family-events/:id/media/:mediaId` — открепление.
+
+Операции прикрепления и открепления доступны только создателю события. Просмотр доступен обоим партнёрам активной семьи.
+Чужие медиа не проходят проверку family scope. Ответы событий дополнены `mediaIds`.
+
+Миграция: `20260826130000_add_family_event_media`. Удаление Media каскадно убирает связи, но отдельная media-запись не вызывает S3 cleanup.
+
+Проверки: `prisma generate`, `prisma validate`, Jest 38 suites / 136 tests, format check, lint, build и `git diff --check` PASS.
+Следующий шаг: production deploy с миграцией и smoke attach/list/detach на временных тестовых данных.
+
 ## 2026-08-26 Child profiles: private S3 avatar binding
 
 Профиль ребёнка теперь может ссылаться на уже загруженный family-scoped image через

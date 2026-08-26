@@ -6,11 +6,13 @@ import { FamilyEventStatus, resolveFamilyEventStatus } from '../family-event-sta
 export const familyEventInclude = {
   proposedBy: true,
   respondedBy: true,
+  mediaAttachments: { include: { media: true }, orderBy: { createdAt: 'asc' as const } },
 } satisfies Prisma.FamilyEventInclude;
 
 export type FamilyEventEntity = FamilyEvent & {
   proposedBy: User;
   respondedBy: User | null;
+  mediaAttachments: { media: { id: string } }[];
 };
 
 export class FamilyEventResponseDto {
@@ -34,6 +36,7 @@ export class FamilyEventResponseDto {
   @ApiProperty({ minimum: 1 }) version: number;
   @ApiProperty() createdAt: Date;
   @ApiProperty() updatedAt: Date;
+  @ApiProperty({ type: [String], format: 'uuid' }) mediaIds: string[];
 
   static fromEntity(
     event: FamilyEventEntity,
@@ -58,6 +61,7 @@ export class FamilyEventResponseDto {
       version: event.version,
       createdAt: event.createdAt,
       updatedAt: event.updatedAt,
+      mediaIds: (event.mediaAttachments ?? []).map(({ media }) => media.id),
     };
   }
 }

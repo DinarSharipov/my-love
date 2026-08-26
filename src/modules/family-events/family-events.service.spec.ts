@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   FamilyEvent,
   FamilyEventDecisionStatus,
@@ -251,5 +256,72 @@ describe('FamilyEventsService', () => {
     await expect(service.update(eventId, creatorId, {})).rejects.toBeInstanceOf(
       BadRequestException,
     );
+  });
+
+  it('allows both family partners to read event media', async () => {
+    const findFirst = jest.fn().mockResolvedValue({
+      mediaAttachments: [{ mediaId: '4a8b7c6d-1234-4abc-8def-1234567890ab' }],
+    });
+    const findManyByIds = jest
+      .fn()
+      .mockResolvedValue([{ id: '4a8b7c6d-1234-4abc-8def-1234567890ab' }]);
+    const prisma = { familyEvent: { findFirst } };
+    const service = new FamilyEventsService(
+      prisma as unknown as PrismaService,
+      membership,
+      notifications as never,
+      { findManyByIds } as never,
+    );
+
+    await expect(service.listMedia(eventId, partnerId)).resolves.toEqual([
+      { id: '4a8b7c6d-1234-4abc-8def-1234567890ab' },
+    ]);
+    expect(findManyByIds).toHaveBeenCalledWith(partnerId, ['4a8b7c6d-1234-4abc-8def-1234567890ab']);
+  });
+
+  it('rejects attaching media from another family', async () => {
+    const familyEventFindFirst = jest
+      .fn()
+      .mockResolvedValue({ id: eventId, proposedById: creatorId });
+    const mediaFindFirst = jest.fn().mockResolvedValue(null);
+    const prisma = {
+      familyEvent: { findFirst: familyEventFindFirst },
+      media: { findFirst: mediaFindFirst },
+    };
+    const service = new FamilyEventsService(
+      prisma as unknown as PrismaService,
+      membership,
+      notifications as never,
+      {} as never,
+    );
+
+    await expect(
+      service.attachMedia(eventId, creatorId, '4a8b7c6d-1234-4abc-8def-1234567890ab'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(mediaFindFirst).toHaveBeenCalledWith({
+      where: { id: '4a8b7c6d-1234-4abc-8def-1234567890ab', familyId },
+    });
+  });
+
+  it('does not let the partner mutate event media', async () => {
+    const familyEventFindFirst = jest
+      .fn()
+      .mockResolvedValue({ id: eventId, proposedById: creatorId });
+    const prisma = {
+      familyEvent: { findFirst: familyEventFindFirst },
+      media: { findFirst: jest.fn() },
+      familyEventMedia: { createMany: jest.fn(), deleteMany: jest.fn() },
+    };
+    const service = new FamilyEventsService(
+      prisma as unknown as PrismaService,
+      membership,
+      notifications as never,
+      {} as never,
+    );
+
+    await expect(
+      service.detachMedia(eventId, partnerId, '4a8b7c6d-1234-4abc-8def-1234567890ab'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.familyEventMedia.deleteMany).not.toHaveBeenCalled();
   });
 });
