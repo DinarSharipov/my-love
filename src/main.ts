@@ -1,5 +1,6 @@
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { RedisIoAdapter } from './common/websocket/redis-io.adapter';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
@@ -9,6 +10,12 @@ import { AppModule } from './app.module';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   const config = app.get(ConfigService);
+  const redisUrl = config.get<string>('MESSENGER_REDIS_URL');
+  if (redisUrl) {
+    const redisAdapter = new RedisIoAdapter(app);
+    await redisAdapter.connectToRedis(redisUrl);
+    app.useWebSocketAdapter(redisAdapter);
+  }
   app.useLogger(app.get(Logger));
   app.use(helmet());
   app.enableShutdownHooks();

@@ -36,7 +36,7 @@ Backend for a family-management app: household tasks, budgets, events, reminders
 
 ## Communication
 
-- Communicate with the user in Russian: final answers, explanations, and progress updates must be in Russian.
+- Always communicate with the user in Russian: every response, final answer, explanation, progress update, status, plan, and handoff must be in Russian unless the user explicitly requests another language.
 - Use Distill only to compress command output and conserve tokens; it must not change the language of user-facing communication.
 
 ## Continuity
@@ -44,3 +44,4 @@ Backend for a family-management app: household tasks, budgets, events, reminders
 - Before substantial work, read this repository's `docs/IMPLEMENTATION_STATUS.md`. Use the frontend `docs/PRODUCT_ROADMAP.md` only as read-only product context when needed.
 - After each backend slice, update `docs/IMPLEMENTATION_STATUS.md` in this repository with migrations, API changes, tests, decisions, blockers, compatibility notes, and the recommended next slice.
 - Treat the backend status file as the handoff source of truth for new backend agents; verify it against the code before relying on stale roadmap prose.
+- `docs/BACKEND_IMPLEMENTATION_PLAN.md` is the completed archive for backend Plan v1.0. All new work must follow `docs/BACKEND_IMPLEMENTATION_PLAN_V2.md`; do not add new tasks to the v1.0 archive.

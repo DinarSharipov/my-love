@@ -2,7 +2,9 @@ import { INestApplication, ValidationPipe, VersioningType } from '@nestjs/common
 import { Test } from '@nestjs/testing';
 import { FamilyMemberRole, FamilyStatus, Gender, OutboxEventStatus } from '@prisma/client';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import type { Server as HttpServer } from 'node:http';
 import request from 'supertest';
+import { io, type Socket } from 'socket.io-client';
 import { OutboxService } from '../src/common/outbox/outbox.service';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/database/prisma.service';
@@ -49,6 +51,10 @@ interface ApiErrorResult {
   requestId: string;
 }
 
+interface MessagesResponse {
+  items: Array<{ text: string }>;
+}
+
 interface UserProfileResult {
   id: string;
   firstName: string;
@@ -92,7 +98,7 @@ describe('API security regression (e2e)', () => {
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     httpServer = app.getHttpServer() as Parameters<typeof request>[0];
 
     prisma = app.get(PrismaService);
@@ -139,6 +145,37 @@ describe('API security regression (e2e)', () => {
       .patch(`/api/v1/family-invitations/${(invitation.body as InvitationResult).id}/accept`)
       .set(auth(recipient.accessToken))
       .expect(200);
+  }
+
+  function waitForSocketEvent<T>(socket: Socket, event: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`Timed out waiting for ${event}`)), 5_000);
+      socket.once(event, (payload: T) => {
+        clearTimeout(timer);
+        resolve(payload);
+      });
+      socket.once('exception', (payload: { message?: string }) => {
+        clearTimeout(timer);
+        reject(new Error(`Socket.IO server exception: ${payload.message ?? 'unknown error'}`));
+      });
+    });
+  }
+
+  function waitForSocketConnected(socket: Socket): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('Timed out waiting for Socket.IO connection')),
+        5_000,
+      );
+      socket.once('connect', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      socket.once('connect_error', (error: Error) => {
+        clearTimeout(timer);
+        reject(new Error(`Socket.IO connection failed: ${error.message}`));
+      });
+    });
   }
 
   it('protects the couple lifecycle and family-owned resources', async () => {
@@ -940,4 +977,59 @@ describe('API security regression (e2e)', () => {
       .send({ recipeId: archivedRecipeId, plannedFor: '2026-08-22', mealSlot: 'breakfast' })
       .expect(404);
   });
+
+  it('delivers a persisted message between two authorized Socket.IO clients', async () => {
+    const [alice, bob] = await Promise.all([register('MessengerAlice'), register('MessengerBob')]);
+    await createFamily(alice, bob);
+
+    const conversation = await request(httpServer)
+      .post('/api/v1/conversations')
+      .set(auth(alice.accessToken))
+      .send({ type: 'GROUP', title: 'E2E chat', memberIds: [bob.user.id] })
+      .expect(201);
+    const conversationId = (conversation.body as { id: string }).id;
+    const address = (httpServer as HttpServer).address();
+    if (!address || typeof address === 'string')
+      throw new Error('E2E HTTP server is not listening');
+    const url = `http://127.0.0.1:${address.port}/messenger`;
+    const aliceSocket = io(url, { auth: { token: alice.accessToken }, transports: ['websocket'] });
+    const bobSocket = io(url, { auth: { token: bob.accessToken }, transports: ['websocket'] });
+
+    try {
+      await Promise.all([waitForSocketConnected(aliceSocket), waitForSocketConnected(bobSocket)]);
+      const joined = waitForSocketEvent<{ conversationId: string }>(bobSocket, 'presence.updated');
+      aliceSocket.emit('conversation.join', { conversationId });
+      bobSocket.emit('conversation.join', { conversationId });
+      await joined;
+
+      const received = waitForSocketEvent<{ id: string; conversationId: string; text: string }>(
+        bobSocket,
+        'message.created',
+      );
+      aliceSocket.emit('message.send', {
+        conversationId,
+        message: {
+          clientMessageId: randomUUID(),
+          type: 'TEXT',
+          text: 'hello over websocket',
+        },
+      });
+      const message = await received;
+
+      expect(message).toMatchObject({ conversationId, text: 'hello over websocket' });
+      await request(httpServer)
+        .get(`/api/v1/conversations/${conversationId}/messages`)
+        .set(auth(bob.accessToken))
+        .expect(200)
+        .then((response) => {
+          const body = response.body as MessagesResponse;
+          expect(body.items).toEqual(
+            expect.arrayContaining([expect.objectContaining({ text: 'hello over websocket' })]),
+          );
+        });
+    } finally {
+      aliceSocket.close();
+      bobSocket.close();
+    }
+  }, 20_000);
 });

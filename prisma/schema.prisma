@@ -87,6 +87,29 @@ enum MediaUploadStatus {
   FAILED
 }
 
+enum ConversationType {
+  DIRECT
+  GROUP
+}
+
+enum ConversationStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ConversationMemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  VOICE
+}
+
 enum ObjectStorageCleanupAction {
   DELETE_OBJECT
   ABORT_MULTIPART_UPLOAD
@@ -223,32 +246,50 @@ model User {
   createdWellbeingCoupleMeetings   WellbeingCoupleMeeting[]    @relation("WellbeingCoupleMeetingCreator")
   media                            Media[]
   mediaUploadSessions              MediaUploadSession[]
+  createdConversations             Conversation[]              @relation("ConversationCreator")
+  conversationMemberships          ConversationMember[]
+  sentMessages                     Message[]
 
   @@index([lastName, firstName], map: "users_last_name_first_name_idx")
   @@map("users")
 }
 
 model Media {
-  id               String    @id @default(uuid()) @db.Uuid
-  userId           String    @map("user_id") @db.Uuid
-  familyId         String    @map("family_id") @db.Uuid
-  objectKey        String    @unique @map("object_key") @db.VarChar(512)
-  previewObjectKey String?   @map("preview_object_key") @db.VarChar(512)
-  originalName     String    @map("original_name") @db.VarChar(255)
-  mimeType         String    @map("mime_type") @db.VarChar(127)
-  kind             MediaKind
-  sizeBytes        BigInt    @map("size_bytes")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  family           Family    @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  id                     String                   @id @default(uuid()) @db.Uuid
+  userId                 String                   @map("user_id") @db.Uuid
+  familyId               String                   @map("family_id") @db.Uuid
+  objectKey              String                   @unique @map("object_key") @db.VarChar(512)
+  previewObjectKey       String?                  @map("preview_object_key") @db.VarChar(512)
+  originalName           String                   @map("original_name") @db.VarChar(255)
+  mimeType               String                   @map("mime_type") @db.VarChar(127)
+  kind                   MediaKind
+  sizeBytes              BigInt                   @map("size_bytes")
+  createdAt              DateTime                 @default(now()) @map("created_at")
+  user                   User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family                 Family                   @relation(fields: [familyId], references: [id], onDelete: Cascade)
   familyEventAttachments FamilyEventMedia[]
-  childAvatars     ChildProfile[] @relation("ChildProfileAvatarMedia")
+  recipeAttachments      RecipeMedia[]
+  ledgerAttachments      LedgerTransactionMedia[]
+  childAvatars           ChildProfile[]           @relation("ChildProfileAvatarMedia")
+  messageAttachments     MessageMedia[]
 
   @@index([familyId, createdAt])
   @@index([familyId, kind, createdAt])
   @@index([familyId, originalName])
   @@index([userId, createdAt])
   @@map("media")
+}
+
+model RecipeMedia {
+  recipeId  String   @map("recipe_id") @db.Uuid
+  mediaId   String   @map("media_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  media     Media    @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@id([recipeId, mediaId])
+  @@index([mediaId])
+  @@map("recipe_media")
 }
 
 model FamilyEventMedia {
@@ -261,6 +302,18 @@ model FamilyEventMedia {
   @@id([familyEventId, mediaId])
   @@index([mediaId])
   @@map("family_event_media")
+}
+
+model LedgerTransactionMedia {
+  transactionId String            @map("transaction_id") @db.Uuid
+  mediaId       String            @map("media_id") @db.Uuid
+  createdAt     DateTime          @default(now()) @map("created_at")
+  transaction   LedgerTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  media         Media             @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@id([transactionId, mediaId])
+  @@index([mediaId])
+  @@map("ledger_transaction_media")
 }
 
 model MediaUploadSession {
@@ -339,8 +392,77 @@ model Family {
   childProfiles            ChildProfile[]
   recipes                  Recipe[]
   mealPlans                MealPlan[]
+  conversations            Conversation[]
 
   @@map("families")
+}
+
+model Conversation {
+  id          String               @id @default(uuid()) @db.Uuid
+  familyId    String               @map("family_id") @db.Uuid
+  createdById String               @map("created_by_id") @db.Uuid
+  type        ConversationType
+  title       String?              @db.VarChar(120)
+  status      ConversationStatus   @default(ACTIVE)
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+  family      Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdBy   User                 @relation("ConversationCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  members     ConversationMember[]
+  messages    Message[]
+
+  @@index([familyId, status, updatedAt])
+  @@map("conversations")
+}
+
+model ConversationMember {
+  conversationId    String                 @map("conversation_id") @db.Uuid
+  userId            String                 @map("user_id") @db.Uuid
+  role              ConversationMemberRole @default(MEMBER)
+  joinedAt          DateTime               @default(now()) @map("joined_at")
+  lastReadAt        DateTime?              @map("last_read_at")
+  lastReadMessageId String?                @map("last_read_message_id") @db.Uuid
+  conversation      Conversation           @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadMessage   Message?               @relation("MemberLastReadMessage", fields: [lastReadMessageId], references: [id], onDelete: SetNull)
+
+  @@id([conversationId, userId])
+  @@index([userId, joinedAt])
+  @@index([conversationId, lastReadAt])
+  @@map("conversation_members")
+}
+
+model Message {
+  id              String               @id @default(uuid()) @db.Uuid
+  conversationId  String               @map("conversation_id") @db.Uuid
+  senderId        String               @map("sender_id") @db.Uuid
+  clientMessageId String               @map("client_message_id") @db.VarChar(128)
+  type            MessageType
+  text            String?              @db.Text
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+  deletedAt       DateTime?            @map("deleted_at")
+  conversation    Conversation         @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender          User                 @relation(fields: [senderId], references: [id], onDelete: Restrict)
+  media           MessageMedia[]
+  readByMembers   ConversationMember[] @relation("MemberLastReadMessage")
+
+  @@unique([senderId, clientMessageId])
+  @@index([conversationId, createdAt, id])
+  @@index([senderId, createdAt])
+  @@map("messages")
+}
+
+model MessageMedia {
+  messageId String   @map("message_id") @db.Uuid
+  mediaId   String   @map("media_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  media     Media    @relation(fields: [mediaId], references: [id], onDelete: Restrict)
+
+  @@id([messageId, mediaId])
+  @@index([mediaId])
+  @@map("message_media")
 }
 
 model FamilyDissolutionRequest {
@@ -491,20 +613,21 @@ model MealPlan {
 }
 
 model Recipe {
-  id            String               @id @default(uuid()) @db.Uuid
-  familyId      String               @map("family_id") @db.Uuid
-  createdById   String               @map("created_by_id") @db.Uuid
-  name          String               @db.VarChar(160)
-  instructions  String?              @db.Text
-  archived      Boolean              @default(false)
-  version       Int                  @default(1)
-  createdAt     DateTime             @default(now()) @map("created_at")
-  updatedAt     DateTime             @updatedAt @map("updated_at")
-  family        Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)
-  createdBy     User                 @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  ingredients   RecipeIngredient[]
-  dietaryLabels RecipeDietaryLabel[]
-  mealPlans     MealPlan[]
+  id               String               @id @default(uuid()) @db.Uuid
+  familyId         String               @map("family_id") @db.Uuid
+  createdById      String               @map("created_by_id") @db.Uuid
+  name             String               @db.VarChar(160)
+  instructions     String?              @db.Text
+  archived         Boolean              @default(false)
+  version          Int                  @default(1)
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+  family           Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdBy        User                 @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  ingredients      RecipeIngredient[]
+  dietaryLabels    RecipeDietaryLabel[]
+  mealPlans        MealPlan[]
+  mediaAttachments RecipeMedia[]
 
   @@index([familyId, archived, updatedAt])
   @@map("recipes")
@@ -678,21 +801,21 @@ model FamilyMember {
 }
 
 model ChildProfile {
-  id           String        @id @default(uuid()) @db.Uuid
-  familyId     String        @map("family_id") @db.Uuid
-  firstName    String        @map("first_name") @db.VarChar(100)
-  lastName     String?       @map("last_name") @db.VarChar(100)
-  birthDate    DateTime      @map("birth_date") @db.Date
-  avatarUrl    String?       @map("avatar_url") @db.VarChar(1000)
-  avatarMediaId String?      @map("avatar_media_id") @db.Uuid
-  avatarPreviewToken String? @unique @map("avatar_preview_token") @db.VarChar(64)
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
-  family       Family        @relation(fields: [familyId], references: [id], onDelete: Cascade)
-  avatarMedia  Media?        @relation("ChildProfileAvatarMedia", fields: [avatarMediaId], references: [id], onDelete: SetNull)
-  tasks        Task[]
-  events       FamilyEvent[]
-  taskRoutines TaskRoutine[]
+  id                 String        @id @default(uuid()) @db.Uuid
+  familyId           String        @map("family_id") @db.Uuid
+  firstName          String        @map("first_name") @db.VarChar(100)
+  lastName           String?       @map("last_name") @db.VarChar(100)
+  birthDate          DateTime      @map("birth_date") @db.Date
+  avatarUrl          String?       @map("avatar_url") @db.VarChar(1000)
+  avatarMediaId      String?       @map("avatar_media_id") @db.Uuid
+  avatarPreviewToken String?       @unique @map("avatar_preview_token") @db.VarChar(64)
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+  family             Family        @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  avatarMedia        Media?        @relation("ChildProfileAvatarMedia", fields: [avatarMediaId], references: [id], onDelete: SetNull)
+  tasks              Task[]
+  events             FamilyEvent[]
+  taskRoutines       TaskRoutine[]
 
   @@index([familyId, firstName])
   @@index([avatarMediaId])
@@ -966,6 +1089,7 @@ model LedgerTransaction {
   entries          LedgerEntry[]
   command          FinancialCommandResult?
   goalContribution FinancialGoalContribution?
+  mediaAttachments LedgerTransactionMedia[]
 
   @@index([familyId, occurredAt, id])
   @@index([categoryId, occurredAt])

@@ -6,12 +6,20 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiNoContentResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ConcurrencyVersion } from '../../common/decorators/concurrency-version.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -26,6 +34,8 @@ import {
   UpdateMealPlanDto,
   UpdateRecipeDto,
 } from './dto/recipe.dto';
+import { AttachRecipeMediaDto } from './dto/attach-recipe-media.dto';
+import { MediaResponseDto } from '../media/dto/media-response.dto';
 import { MealsService } from './meals.service';
 @ApiTags('meals')
 @ApiBearerAuth()
@@ -46,6 +56,39 @@ export class MealsController {
     @Body() dto: CreateRecipeDto,
   ) {
     return this.meals.create(u.id, dto);
+  }
+  @Get(':id/media')
+  @ApiOperation({ summary: 'List media attached to a recipe' })
+  @ApiOkResponse({ type: [MediaResponseDto] })
+  @ApiNotFoundResponse({ description: 'Recipe does not exist in the current family' })
+  listMedia(
+    @CurrentUser() u: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<MediaResponseDto[]> {
+    return this.meals.listRecipeMedia(id, u.id);
+  }
+  @Post(':id/media')
+  @ApiOperation({ summary: 'Attach family media to a recipe' })
+  @ApiOkResponse({ type: [MediaResponseDto] })
+  @ApiNotFoundResponse({ description: 'Recipe or media does not exist in the current family' })
+  attachMedia(
+    @CurrentUser() u: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AttachRecipeMediaDto,
+  ): Promise<MediaResponseDto[]> {
+    return this.meals.attachRecipeMedia(id, u.id, dto.mediaId);
+  }
+  @Delete(':id/media/:mediaId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Detach media from a recipe' })
+  @ApiNoContentResponse()
+  @ApiNotFoundResponse({ description: 'Recipe does not exist in the current family' })
+  detachMedia(
+    @CurrentUser() u: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('mediaId', ParseUUIDPipe) mediaId: string,
+  ): Promise<void> {
+    return this.meals.detachRecipeMedia(id, u.id, mediaId);
   }
   @Patch(':id') @ApiOkResponse({ type: RecipeResponseDto }) update(
     @CurrentUser() u: AuthenticatedUser,

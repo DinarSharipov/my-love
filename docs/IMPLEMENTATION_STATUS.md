@@ -1,3 +1,51 @@
+# 2026-08-26 Ledger transaction media attachments
+
+Для финансовых операций добавлена many-to-many связь `ledger_transaction_media`.
+Она предназначена для чеков и подтверждающих изображений/документов, при этом повторное
+прикрепление идемпотентно, а detach, reversal и удаление связи не удаляют S3-объект.
+
+API:
+- `GET /api/v1/families/me/ledger/:id/media` — media операции;
+- `POST /api/v1/families/me/ledger/:id/media` с `{ "mediaId": "..." }` — attach;
+- `DELETE /api/v1/families/me/ledger/:id/media/:mediaId` — detach.
+
+Перед любой операцией повторно применяется существующая finance visibility policy: транзакция
+доступна только если все её wallet entries видимы текущему пользователю. Media дополнительно
+проверяется по `familyId`; чужие media и невидимые транзакции не раскрываются.
+Основные ledger responses не изменены — подробные media выдаются отдельным endpoint.
+
+Миграция: `20260826160000_add_ledger_transaction_media`.
+Проверки: Prisma generate/validate, targeted 2/2, полный Jest 39 suites / 144 tests,
+lint, format check, build и `git diff --check` PASS.
+Следующий шаг: commit/push, production migration и isolated smoke attach/list/detach
+на временных данных без затрагивания пользовательских финансовых записей.
+
+# 2026-08-26 Recipe media attachments
+
+Для семейных рецептов добавлена привязка media через новую таблицу
+`recipe_media` с composite primary key и каскадным удалением только связи.
+Удаление связи, архивация рецепта или удаление meal plan не удаляют S3-объект.
+Meal plan использует media рецепта через уже существующую связь с `Recipe`, поэтому
+отдельная дублирующая привязка к meal plan не нужна.
+
+API:
+- `GET /api/v1/families/me/recipes/:id/media` — список доступных семье media с
+  metadata, preview/download URL;
+- `POST /api/v1/families/me/recipes/:id/media` с `{ "mediaId": "..." }` — attach;
+- `DELETE /api/v1/families/me/recipes/:id/media/:mediaId` — detach.
+
+Чтение и изменение требуют active family membership; media и recipe должны принадлежать
+той же семье. Прикреплять и откреплять можно только активный рецепт. Повторный attach
+безопасен благодаря composite key и `skipDuplicates`. Существующие recipe/meal-plan
+responses не ломались: подробные media возвращаются отдельным endpoint.
+
+Миграция: `20260826150000_add_recipe_media`.
+Проверки: targeted Meals Jest 17/17 и backend build PASS.
+Контракт усилен: recipe/media route params проходят `ParseUUIDPipe`, Swagger описывает операции
+и `404`; S3-объекты не удаляются при detach/archive.
+Следующий шаг: полный lint/test/format/Prisma validation, затем production deploy с
+migration и isolated smoke attach/list/detach на временных данных.
+
 # 2026-08-20 Local Docker refresh
 
 Обновлены базовые Docker-образы PostgreSQL и Mailpit, production-образ API
@@ -895,3 +943,97 @@ optional `avatarMediaId`; назначать можно только IMAGE то�
 Проверки: `prisma generate`, `prisma validate`, полный Jest — 38 suites / 136 tests, format check,
 lint, build и `git diff --check` прошли. Следом: применить migration через обычный production deploy
 и выполнить isolated smoke: image upload → assignment к child profile → preview → media deletion.
+# 2026-08-26 Messenger WebSocket foundation
+
+Реализован первый backend-срез Messenger. Добавлены Prisma-модели и миграция `20260826170000_add_messenger_core` для семейных `Conversation`, участников, сообщений и связей `MessageMedia`. Реализованы HTTP endpoints: создание direct/group чата, список и получение чата, пагинированная история сообщений и отправка сообщения. Доступ проверяется через активное членство пользователя в семье; media разрешены только из той же семьи и с соответствующим типом IMAGE/VIDEO/AUDIO.
+
+Добавлен Socket.IO Gateway в namespace `/messenger` с JWT/session authentication: `conversation.join`, `conversation.leave`, `message.send`, `message.read`; сервер публикует `message.created` и `message.read` только в комнату авторизованного чата. Отправка файлов через WebSocket запрещена архитектурно: сначала используется существующий multipart S3 upload, затем в сообщение передаются `mediaIds`.
+
+Проверки: Prisma format/validate/generate, миграция внутри актуально пересобранного локального Docker API, `npm run lint`, `npm run build`, полный Jest 39 suites / 144 tests, `git diff --check` — PASS. Локальный API-контейнер пересобран и запущен; миграция применена, health проверяется контейнером.
+
+Ограничения текущего среза: ещё не реализованы Redis adapter, message-specific media download authorization и E2E/load tests. Следующий срез — Redis fan-out, message media endpoints и integration tests.
+
+# 2026-08-26 Messenger groups and message lifecycle
+
+Расширен Messenger: добавлены group membership endpoints (`PATCH /conversations/:id`, `POST/DELETE /conversations/:id/members`, `POST /conversations/:id/leave`) с ролями OWNER/ADMIN/MEMBER и запретом удаления владельца. Добавлены HTTP и WebSocket операции edit/delete сообщений; изменять и удалять может только автор, удаление soft-delete сохраняет запись и media-связи.
+
+WebSocket payloads для join/leave/send/read/edit/delete теперь валидируются вложенным `ValidationPipe`. Добавлены события `message.updated` и `message.deleted`. Media по-прежнему проверяется по familyId и соответствию типа сообщения.
+
+Проверки: Messenger Jest 4/4, lint, build и `git diff --check` — PASS. Следующий срез: typing/presence, replay после reconnect, Redis adapter и integration/E2E WebSocket tests.
+
+# 2026-08-26 Messenger message-scoped media access
+
+Добавлены message-scoped endpoints для вложений Messenger: `GET /conversations/:conversationId/messages/:messageId/media`, а также `stream` и `download` для конкретного `mediaId`. Каждый запрос сначала проверяет активное членство пользователя в чате и наличие точной связи `MessageMedia`; затем применяется стандартная family-проверка MediaService. Внешние object keys не раскрываются, приватный S3 сохраняется.
+
+Добавлены unit-тесты на выдачу только вложений сообщения и отказ в потоковой выдаче несвязанного media. Проверки: Prettier, ESLint, полный Jest 40 suites / 150 tests, build и `git diff --check` — PASS.
+
+Следующий срез: Redis adapter для fan-out между несколькими API-инстансами и integration/load tests WebSocket.
+
+# 2026-08-26 Messenger Redis adapter
+
+Добавлен опциональный Redis adapter для Socket.IO. При наличии `MESSENGER_REDIS_URL` приложение подключает отдельные pub/sub Redis-клиенты и fan-out между API-инстансами; без этой переменной сохраняется текущий single-instance режим. Redis подключается на старте fail-fast и закрывается вместе с WebSocket adapter. Секреты и URL в репозиторий не добавлялись.
+
+Добавлены зависимости `@socket.io/redis-adapter` и `redis`, конфигурация `MESSENGER_REDIS_URL` принимает только `redis://` или `rediss://`. Проверки: ESLint, build, полный Jest 40 suites / 150 tests и `git diff --check` — PASS.
+
+Остаётся: задать Redis endpoint в окружении deployment и добавить integration/load tests для multi-instance fan-out.
+
+# 2026-08-26 Messenger WebSocket contract tests
+
+Добавлены автоматические тесты `MessengerGateway`: проверка JWT и активной сессии при подключении, отказ для невалидной сессии,
+membership-check перед `conversation.join`, порядок `persist -> message.created`, автоматическое завершение typing через 5 секунд и
+единый контракт ошибок WebSocket. Тесты не требуют реального Redis или S3 и не затрагивают frontend.
+
+Проверка: targeted Jest MessengerGateway — 1 suite / 6 tests PASS; полный Jest — 41 suite / 156 tests PASS. Следующий срез: отдельный E2E-тест подключения Socket.IO с реальной
+тестовой PostgreSQL-сессией и проверка multi-instance fan-out при наличии Redis в окружении.
+
+# 2026-08-26 Messenger Socket.IO E2E и race-condition fix
+
+Добавлен реальный E2E-сценарий с временной PostgreSQL: два пользователя одной семьи проходят JWT/session authentication,
+подключаются к namespace `/messenger`, входят в group conversation, один отправляет сообщение, второй получает `message.created`,
+после чего сообщение проверяется через HTTP history endpoint.
+
+В ходе E2E обнаружена и устранена гонка: `handleConnection` выполнял session lookup асинхронно, пока клиент уже мог отправить первый
+command. Gateway теперь хранит promise аутентификации socket и перед каждым command дожидается его завершения; invalid session по-прежнему
+немедленно отключается. Добавлена dev-зависимость `socket.io-client`. Frontend не изменялся.
+
+Проверки: E2E 1 suite / 14 tests PASS, targeted Gateway Jest 1 suite / 6 tests PASS, lint и build PASS. Следующий срез: Redis
+multi-instance fan-out integration/load test при наличии Redis endpoint.
+
+# 2026-08-26 Messenger Redis multi-instance fan-out
+
+Добавлен отдельный integration test `test/messenger-redis-fanout.e2e-spec.ts` и script `test:messenger:redis`. Harness поднимает два
+Socket.IO-инстанса с `RedisIoAdapter`, подключает клиентов к одной комнате и проверяет доставку `message.created` с instance A на instance B
+через Redis pub/sub. Без `MESSENGER_REDIS_URL` тест корректно skipped; production secrets и frontend не затрагивались.
+
+Проверки: реальный Redis 7 в временном контейнере — 1 test PASS; без Redis — 1 suite skipped; lint PASS. Следующий срез: добавить
+операционную конфигурацию Redis в deployment только после предоставления отдельного Redis endpoint/credentials и выполнить нагрузочный smoke.
+
+# 2026-08-26 Messenger Redis load smoke
+
+Добавлен `test/messenger-redis-load.e2e-spec.ts` и script `test:messenger:redis:load`. Тест поднимает два Socket.IO-инстанса,
+подключает несколько клиентов к каждому, отправляет burst `message.created` и проверяет полный fan-out на обоих
+инстансах. Параметры ограничены: `MESSENGER_REDIS_LOAD_CLIENTS` (default 2, max 10) и
+`MESSENGER_REDIS_LOAD_MESSAGES` (default 100, max 1000). Без `MESSENGER_REDIS_URL` smoke корректно skipped;
+production Redis endpoint/credentials не изменялись.
+
+В Compose добавлен отдельный Redis 7 с AOF volume, паролем, `maxmemory=192mb`, `noeviction` и healthcheck; Redis-порт
+не публикуется наружу. API получает внутренний `MESSENGER_REDIS_URL=redis://:...@redis:6379`. Production workflow требует
+GitHub Environment secret `REDIS_PASSWORD` и записывает его в серверный `.env` без вывода значения. Без этого secret
+deployment блокируется намеренно.
+
+Локальный `.env` пока не содержит `REDIS_PASSWORD`, поэтому Redis локально не запускался до добавления владельцем
+секретного URL-safe значения.
+
+Проверки: реальный Redis 7 load smoke — 1/1 PASS; без Redis — 1 suite skipped; полный Jest — 41 suite / 156 tests PASS;
+format check, lint, build, Prisma validate и `git diff --check` — PASS.
+
+Следующий срез: выдать Redis deployment configuration после получения отдельного endpoint/credentials и прогнать
+smoke в целевой среде.
+
+# 2026-08-26 Messenger presence, typing and reconnect cursor
+
+Добавлены ephemeral-события `presence.updated` и `typing.updated` с автоматическим завершением typing через 5 секунд, очисткой при leave/disconnect и проверкой active family membership. Presence публикуется только в комнате авторизованной беседы; глобальная публикация статусов не используется.
+
+История сообщений получила cursor `afterId` для восстановления новых сообщений после reconnect, а также `nextCursor` и защиту от одновременного использования `beforeId`/`afterId`. PostgreSQL остаётся источником истины, бинарные данные через WebSocket не передаются.
+
+Проверки: lint, build и `git diff --check` — PASS. Полный Jest после этого среза требуется повторить перед commit/push. Следующий срез — Redis adapter для нескольких API-инстансов и integration/E2E WebSocket tests.

@@ -26,6 +26,7 @@ import { FinanceModule } from './modules/finance/finance.module';
 import { WellbeingModule } from './modules/wellbeing/wellbeing.module';
 import { MediaModule } from './modules/media/media.module';
 import { HTTP_LOG_REDACT_PATHS } from './common/logging/http-log-redaction';
+import { MessengerModule } from './modules/messenger/messenger.module';
 
 @Module({
   imports: [
@@ -74,6 +75,7 @@ import { HTTP_LOG_REDACT_PATHS } from './common/logging/http-log-redaction';
     WellbeingModule,
     MediaModule,
     HealthModule,
+    MessengerModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

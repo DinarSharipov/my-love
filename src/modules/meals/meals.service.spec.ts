@@ -138,6 +138,77 @@ describe('MealsService', () => {
     expect(prisma.mealPlan.create).not.toHaveBeenCalled();
   });
 
+  it('lists recipe media through the family-scoped media service', async () => {
+    const prisma = {
+      recipe: {
+        findFirst: jest.fn().mockResolvedValue({
+          mediaAttachments: [{ mediaId: 'media-1' }, { mediaId: 'media-2' }],
+        }),
+      },
+    };
+    const mediaService = { findManyByIds: jest.fn().mockResolvedValue([{ id: 'media-1' }]) };
+    const service = new MealsService(
+      prisma as never,
+      membership as never,
+      audit as never,
+      notifications as never,
+      mediaService as never,
+    );
+
+    await expect(service.listRecipeMedia('recipe-id', 'user-id')).resolves.toEqual([
+      { id: 'media-1' },
+    ]);
+    expect(prisma.recipe.findFirst).toHaveBeenCalledWith({
+      where: { id: 'recipe-id', familyId: 'family-id' },
+      include: { mediaAttachments: { select: { mediaId: true }, orderBy: { createdAt: 'asc' } } },
+    });
+    expect(mediaService.findManyByIds).toHaveBeenCalledWith('user-id', ['media-1', 'media-2']);
+  });
+
+  it('rejects attaching media from another family and never creates the relation', async () => {
+    const prisma = {
+      recipe: { findFirst: jest.fn().mockResolvedValue({ id: 'recipe-id' }) },
+      media: { findFirst: jest.fn().mockResolvedValue(null) },
+      recipeMedia: { createMany: jest.fn() },
+    };
+    const service = new MealsService(
+      prisma as never,
+      membership as never,
+      audit as never,
+      notifications as never,
+      { findManyByIds: jest.fn() } as never,
+    );
+
+    await expect(
+      service.attachRecipeMedia('recipe-id', 'user-id', 'foreign-media'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.recipeMedia.createMany).not.toHaveBeenCalled();
+  });
+
+  it('does not attach media to an archived recipe', async () => {
+    const prisma = {
+      recipe: { findFirst: jest.fn().mockResolvedValue(null) },
+      media: { findFirst: jest.fn() },
+      recipeMedia: { createMany: jest.fn() },
+    };
+    const service = new MealsService(
+      prisma as never,
+      membership as never,
+      audit as never,
+      notifications as never,
+      { findManyByIds: jest.fn() } as never,
+    );
+
+    await expect(
+      service.attachRecipeMedia('archived-recipe', 'user-id', 'media-id'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.recipe.findFirst).toHaveBeenCalledWith({
+      where: { id: 'archived-recipe', familyId: 'family-id', archived: false },
+      select: { id: true },
+    });
+    expect(prisma.recipeMedia.createMany).not.toHaveBeenCalled();
+  });
+
   it('replaces recipe ingredients and labels atomically inside the caller family', async () => {
     const updatedRecipe = { id: 'recipe-id', version: 3 };
     const tx = {

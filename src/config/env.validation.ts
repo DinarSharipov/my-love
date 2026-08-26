@@ -5,6 +5,12 @@ export const envValidationSchema = Joi.object({
   PORT: Joi.number().port().default(5000),
   API_PREFIX: Joi.string().default('api'),
   CORS_ORIGINS: Joi.string().allow('').default(''),
+  MESSENGER_REDIS_URL: Joi.string()
+    .uri({ scheme: ['redis', 'rediss'] })
+    .optional(),
+  REDIS_PASSWORD: Joi.string()
+    .pattern(/^[A-Za-z0-9._~-]{32,}$/)
+    .optional(),
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug', 'trace').default('info'),
   DATABASE_URL: Joi.string()
     .uri({ scheme: ['postgresql', 'postgres'] })

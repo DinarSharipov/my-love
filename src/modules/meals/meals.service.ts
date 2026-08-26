@@ -1,8 +1,10 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { VersionConflictException } from '../../common/http/version-conflict.exception';
 import { AuditService } from '../../common/audit/audit.service';
 import { NotificationProducerService } from '../../common/notifications/notification-producer.service';
+import { MediaResponseDto } from '../media/dto/media-response.dto';
+import { MediaService } from '../media/media.service';
 import { PrismaService } from '../../database/prisma.service';
 import { FamilyMembershipService } from '../family-members/family-membership.service';
 import {
@@ -18,7 +20,52 @@ export class MealsService {
     private readonly membership: FamilyMembershipService,
     private readonly audit: AuditService,
     private readonly notifications: NotificationProducerService,
+    @Optional() private readonly mediaService?: MediaService,
   ) {}
+
+  async listRecipeMedia(recipeId: string, userId: string): Promise<MediaResponseDto[]> {
+    const { familyId } = await this.membership.requireMembership(userId);
+    const recipe = await this.prisma.recipe.findFirst({
+      where: { id: recipeId, familyId },
+      include: { mediaAttachments: { select: { mediaId: true }, orderBy: { createdAt: 'asc' } } },
+    });
+    if (!recipe) throw new NotFoundException('Recipe not found');
+    if (!this.mediaService) throw new Error('MediaService is not available');
+    return this.mediaService.findManyByIds(
+      userId,
+      recipe.mediaAttachments.map((item) => item.mediaId),
+    );
+  }
+
+  async attachRecipeMedia(
+    recipeId: string,
+    userId: string,
+    mediaId: string,
+  ): Promise<MediaResponseDto[]> {
+    const { familyId } = await this.membership.requireMembership(userId);
+    const recipe = await this.prisma.recipe.findFirst({
+      where: { id: recipeId, familyId, archived: false },
+      select: { id: true },
+    });
+    if (!recipe) throw new NotFoundException('Recipe not found');
+    const media = await this.prisma.media.findFirst({ where: { id: mediaId, familyId } });
+    if (!media) throw new NotFoundException('Media not found');
+    await this.prisma.recipeMedia.createMany({
+      data: { recipeId: recipe.id, mediaId },
+      skipDuplicates: true,
+    });
+    return this.listRecipeMedia(recipe.id, userId);
+  }
+
+  async detachRecipeMedia(recipeId: string, userId: string, mediaId: string): Promise<void> {
+    const { familyId } = await this.membership.requireMembership(userId);
+    const recipe = await this.prisma.recipe.findFirst({
+      where: { id: recipeId, familyId, archived: false },
+      select: { id: true },
+    });
+    if (!recipe) throw new NotFoundException('Recipe not found');
+    await this.prisma.recipeMedia.deleteMany({ where: { recipeId: recipe.id, mediaId } });
+  }
   async list(userId: string) {
     const { familyId } = await this.membership.requireMembership(userId);
     return this.prisma.recipe.findMany({
