@@ -58,20 +58,63 @@ export class MessengerService {
     });
     if (members.length !== memberIds.length)
       throw new ForbiddenException('All members must belong to your family');
-    const conversation = await this.prisma.conversation.create({
-      data: {
-        id: randomUUID(),
-        familyId: context.familyId,
-        createdById: userId,
-        type: dto.type,
-        title: dto.type === ConversationType.DIRECT ? null : dto.title,
-        members: {
-          create: memberIds.map((id) => ({ userId: id, role: id === userId ? 'OWNER' : 'MEMBER' })),
+    const directKey =
+      dto.type === ConversationType.DIRECT ? this.createDirectKey(memberIds) : undefined;
+
+    if (directKey) {
+      const existing = await this.prisma.conversation.findFirst({
+        where: { familyId: context.familyId, directKey },
+        include: conversationInclude,
+      });
+      if (existing) {
+        return {
+          conversation: await this.toConversationResponse(userId, existing),
+          created: false,
+        };
+      }
+    }
+
+    try {
+      const conversation = await this.prisma.conversation.create({
+        data: {
+          id: randomUUID(),
+          familyId: context.familyId,
+          createdById: userId,
+          type: dto.type,
+          directKey,
+          title: dto.type === ConversationType.DIRECT ? null : dto.title,
+          members: {
+            create: memberIds.map((id) => ({
+              userId: id,
+              role: id === userId ? 'OWNER' : 'MEMBER',
+            })),
+          },
         },
-      },
-      include: conversationInclude,
-    });
-    return this.toConversationResponse(userId, conversation);
+        include: conversationInclude,
+      });
+      return {
+        conversation: await this.toConversationResponse(userId, conversation),
+        created: true,
+      };
+    } catch (error: unknown) {
+      if (
+        directKey &&
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const existing = await this.prisma.conversation.findFirst({
+          where: { familyId: context.familyId, directKey },
+          include: conversationInclude,
+        });
+        if (existing) {
+          return {
+            conversation: await this.toConversationResponse(userId, existing),
+            created: false,
+          };
+        }
+      }
+      throw error;
+    }
   }
 
   async listConversations(userId: string) {
@@ -383,6 +426,10 @@ export class MessengerService {
       sender: { select: messengerUserSelect },
       media: { include: { media: true } },
     } as const;
+  }
+
+  private createDirectKey(memberIds: string[]): string {
+    return [...memberIds].sort().join(':');
   }
 
   private async toConversationResponse(

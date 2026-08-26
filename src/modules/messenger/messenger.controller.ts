@@ -61,13 +61,19 @@ export class MessengerController {
   @Post()
   @ApiOperation({ summary: 'Create a direct conversation or group' })
   @ApiCreatedResponse({ type: ConversationResponseDto })
+  @ApiOkResponse({
+    type: ConversationResponseDto,
+    description: 'Existing direct conversation returned',
+  })
   async create(
     @Req() req: Request & { user: AuthenticatedUser },
     @Body() dto: CreateConversationDto,
+    @Res({ passthrough: true }) response: Response,
   ) {
-    const conversation = await this.messenger.createConversation(req.user.id, dto);
-    this.gateway.publishConversationCreated(conversation);
-    return conversation;
+    const result = await this.messenger.createConversation(req.user.id, dto);
+    response.status(result.created ? HttpStatus.CREATED : HttpStatus.OK);
+    if (result.created) this.gateway.publishConversationCreated(result.conversation);
+    return result.conversation;
   }
 
   @Get()

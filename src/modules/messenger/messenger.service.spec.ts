@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { ConversationType, MessageType } from '@prisma/client';
+import { ConversationType, MessageType, Prisma } from '@prisma/client';
 import { MessengerService } from './messenger.service';
 
 describe('MessengerService', () => {
@@ -40,6 +40,92 @@ describe('MessengerService', () => {
         memberIds: ['user-2', 'user-3'],
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('returns an existing direct conversation for the same pair without creating a duplicate', async () => {
+    const existing = {
+      id: 'conversation-1',
+      familyId: 'family-1',
+      createdById: 'user-1',
+      type: ConversationType.DIRECT,
+      title: null,
+      status: 'ACTIVE',
+      createdAt: new Date('2026-08-26T10:00:00.000Z'),
+      updatedAt: new Date('2026-08-26T10:00:00.000Z'),
+      members: [
+        {
+          userId: 'user-1',
+          role: 'OWNER',
+          lastReadAt: null,
+          lastReadMessageId: null,
+          user: {
+            id: 'user-1',
+            firstName: 'User',
+            lastName: 'One',
+            avatarPreviewObjectKey: null,
+            avatarPreviewToken: null,
+          },
+        },
+        {
+          userId: 'user-2',
+          role: 'MEMBER',
+          lastReadAt: null,
+          lastReadMessageId: null,
+          user: {
+            id: 'user-2',
+            firstName: 'User',
+            lastName: 'Two',
+            avatarPreviewObjectKey: null,
+            avatarPreviewToken: null,
+          },
+        },
+      ],
+    };
+    prisma.familyMember.findMany.mockResolvedValue([{ userId: 'user-1' }, { userId: 'user-2' }]);
+    prisma.conversation.findFirst.mockResolvedValue(existing);
+    prisma.message.count.mockResolvedValue(0);
+
+    await expect(
+      service.createConversation('user-1', {
+        type: ConversationType.DIRECT,
+        memberIds: ['user-2'],
+      }),
+    ).resolves.toMatchObject({ created: false, conversation: { id: existing.id } });
+
+    expect(prisma.conversation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { familyId: 'family-1', directKey: 'user-1:user-2' } }),
+    );
+    expect(prisma.conversation.create).not.toHaveBeenCalled();
+  });
+
+  it('returns the competing direct conversation after a unique-index race', async () => {
+    const existing = {
+      id: 'conversation-1',
+      familyId: 'family-1',
+      createdById: 'user-1',
+      type: ConversationType.DIRECT,
+      title: null,
+      status: 'ACTIVE',
+      createdAt: new Date('2026-08-26T10:00:00.000Z'),
+      updatedAt: new Date('2026-08-26T10:00:00.000Z'),
+      members: [],
+    };
+    prisma.familyMember.findMany.mockResolvedValue([{ userId: 'user-1' }, { userId: 'user-2' }]);
+    prisma.conversation.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(existing);
+    prisma.conversation.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '6.16.0',
+      }),
+    );
+    prisma.message.count.mockResolvedValue(0);
+
+    await expect(
+      service.createConversation('user-1', {
+        type: ConversationType.DIRECT,
+        memberIds: ['user-2'],
+      }),
+    ).resolves.toMatchObject({ created: false, conversation: { id: existing.id } });
   });
 
   it('rejects media from another family', async () => {

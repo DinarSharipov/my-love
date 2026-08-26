@@ -1,3 +1,16 @@
+# 2026-08-26 Direct conversation uniqueness
+
+Direct conversations are now idempotent per pair within a family. A deterministic sorted
+`directKey` is stored only for DIRECT conversations and protected by a database unique index
+`(family_id, direct_key)`. `POST /api/v1/conversations` returns the existing direct chat with
+HTTP 200 if it already exists; a newly created chat still returns HTTP 201 and emits
+`conversation.created`. The service handles the unique-index race by re-reading and returning
+the winning conversation. The migration keeps historical data: when old duplicate direct chats
+exist, the earliest active chat is retained as canonical and other duplicates are archived.
+
+Checks: focused Messenger service tests, Prisma format/validate/generate, lint, build, and full
+Jest are required before delivery. No frontend files were changed.
+
 # 2026-08-26 Messenger contract hardening
 
 Контракт Messenger выровнен для frontend codegen и параллельных WebSocket-команд.

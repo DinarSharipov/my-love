@@ -402,6 +402,7 @@ model Conversation {
   familyId    String               @map("family_id") @db.Uuid
   createdById String               @map("created_by_id") @db.Uuid
   type        ConversationType
+  directKey   String?              @map("direct_key") @db.VarChar(73)
   title       String?              @db.VarChar(120)
   status      ConversationStatus   @default(ACTIVE)
   createdAt   DateTime             @default(now()) @map("created_at")
@@ -411,6 +412,7 @@ model Conversation {
   members     ConversationMember[]
   messages    Message[]
 
+  @@unique([familyId, directKey])
   @@index([familyId, status, updatedAt])
   @@map("conversations")
 }
