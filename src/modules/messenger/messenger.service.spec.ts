@@ -14,7 +14,13 @@ describe('MessengerService', () => {
     },
     conversationMember: { upsert: jest.fn(), delete: jest.fn(), update: jest.fn() },
     messageMedia: { findFirst: jest.fn() },
-    message: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
+    message: {
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      count: jest.fn(),
+    },
     media: { findMany: jest.fn() },
     $transaction: jest.fn(),
   };
@@ -24,6 +30,7 @@ describe('MessengerService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     membership.requireMembership.mockResolvedValue({ familyId: 'family-1' });
+    mediaService.findManyByIds.mockResolvedValue([]);
   });
 
   it('rejects a direct conversation with more than one other member', async () => {
@@ -54,7 +61,25 @@ describe('MessengerService', () => {
   });
 
   it('returns an existing message for a duplicate client id', async () => {
-    const existing = { id: 'message-1', clientMessageId: 'client-1' };
+    const existing = {
+      id: 'message-1',
+      conversationId: 'conversation-1',
+      senderId: 'user-1',
+      clientMessageId: 'client-1',
+      type: MessageType.TEXT,
+      text: 'hello',
+      createdAt: new Date('2026-08-26T10:00:00.000Z'),
+      updatedAt: new Date('2026-08-26T10:00:00.000Z'),
+      deletedAt: null,
+      sender: {
+        id: 'user-1',
+        firstName: 'User',
+        lastName: 'One',
+        avatarPreviewObjectKey: null,
+        avatarPreviewToken: null,
+      },
+      media: [],
+    };
     prisma.conversation.findFirst.mockResolvedValue({
       id: 'conversation-1',
       familyId: 'family-1',
@@ -68,7 +93,7 @@ describe('MessengerService', () => {
         type: MessageType.TEXT,
         text: 'hello',
       }),
-    ).resolves.toBe(existing);
+    ).resolves.toMatchObject({ id: existing.id, sender: { avatarUrl: null }, media: [] });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -113,5 +138,49 @@ describe('MessengerService', () => {
     await expect(
       service.requireMessageMedia('user-1', 'conversation-1', 'message-1', 'media-1'),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('uses the oldest item of an older-message page as nextCursor', async () => {
+    const makeMessage = (id: string, createdAt: string) => ({
+      id,
+      conversationId: 'conversation-1',
+      senderId: 'user-2',
+      clientMessageId: id,
+      type: MessageType.TEXT,
+      text: id,
+      createdAt: new Date(createdAt),
+      updatedAt: new Date(createdAt),
+      deletedAt: null,
+      sender: {
+        id: 'user-2',
+        firstName: 'User',
+        lastName: 'Two',
+        avatarPreviewObjectKey: null,
+        avatarPreviewToken: null,
+      },
+      media: [],
+    });
+    prisma.conversation.findFirst.mockResolvedValue({
+      id: 'conversation-1',
+      familyId: 'family-1',
+      members: [{ userId: 'user-1', role: 'MEMBER', lastReadAt: null, lastReadMessageId: null }],
+    });
+    prisma.message.findFirst.mockResolvedValue({
+      id: 'cursor-3',
+      createdAt: new Date('2026-08-26T12:00:00.000Z'),
+    });
+    prisma.message.findMany.mockResolvedValue([
+      makeMessage('message-2', '2026-08-26T11:00:00.000Z'),
+      makeMessage('message-1', '2026-08-26T10:00:00.000Z'),
+    ]);
+    prisma.message.count.mockResolvedValue(0);
+
+    await expect(
+      service.getMessages('user-1', 'conversation-1', { limit: 2, beforeId: 'cursor-3' }),
+    ).resolves.toMatchObject({
+      items: [{ id: 'message-1' }, { id: 'message-2' }],
+      hasMore: true,
+      nextCursor: 'message-1',
+    });
   });
 });

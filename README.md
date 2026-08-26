@@ -55,6 +55,10 @@ npm run start:dev
 - `GET /api/v1/health`
 - `GET /docs`
 
+Контракт realtime-мессенджера (Socket.IO namespace `/messenger`) опубликован в
+[`docs/ASYNCAPI_MESSENGER_V1.yaml`](docs/ASYNCAPI_MESSENGER_V1.yaml). HTTP-модели мессенджера
+доступны в Swagger/OpenAPI.
+
 Статусы `PROPOSED`, `CONFIRMED` и `REJECTED` отражают решение партнера. Для подтвержденного мероприятия API автоматически возвращает `EVENT_DAY` в день события и `COMPLETED` после него. Календарный день определяется переменной `APP_TIMEZONE` (по умолчанию `Europe/Moscow`).
 
 ## Переменные окружения

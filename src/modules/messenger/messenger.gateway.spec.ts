@@ -1,6 +1,7 @@
-import { WsException } from '@nestjs/websockets';
 import { createHash } from 'node:crypto';
+import { BadRequestException } from '@nestjs/common';
 import { MessengerGateway } from './messenger.gateway';
+import { MessengerWsExceptionFilter } from './messenger-ws-exception.filter';
 
 describe('MessengerGateway', () => {
   const jwt = { verifyAsync: jest.fn() };
@@ -67,9 +68,13 @@ describe('MessengerGateway', () => {
     const client = socket();
 
     await expect(
-      gateway.join(client as never, { conversationId: 'conversation-1' }),
+      gateway.join(client as never, {
+        requestId: '00000000-0000-4000-8000-000000000001',
+        conversationId: 'conversation-1',
+      }),
     ).resolves.toEqual({
       ok: true,
+      requestId: '00000000-0000-4000-8000-000000000001',
       conversationId: 'conversation-1',
     });
 
@@ -77,6 +82,7 @@ describe('MessengerGateway', () => {
     expect(client.join).toHaveBeenCalledWith('conversation:conversation-1');
     expect(server.to).toHaveBeenCalledWith('conversation:conversation-1');
     expect(emit).toHaveBeenCalledWith('presence.updated', {
+      conversationId: 'conversation-1',
       userId: 'user-1',
       status: 'online',
     });
@@ -89,10 +95,11 @@ describe('MessengerGateway', () => {
 
     await expect(
       gateway.send(client as never, {
+        requestId: '00000000-0000-4000-8000-000000000002',
         conversationId: 'conversation-1',
         message: { clientMessageId: 'client-1', type: 'TEXT', text: 'hello' },
       }),
-    ).resolves.toEqual({ ok: true, message });
+    ).resolves.toEqual({ ok: true, requestId: '00000000-0000-4000-8000-000000000002', message });
 
     expect(messenger.createMessage).toHaveBeenCalledWith(
       'user-1',
@@ -107,7 +114,10 @@ describe('MessengerGateway', () => {
     const client = socket();
 
     try {
-      await gateway.typingStart(client as never, { conversationId: 'conversation-1' });
+      await gateway.typingStart(client as never, {
+        requestId: '00000000-0000-4000-8000-000000000003',
+        conversationId: 'conversation-1',
+      });
       expect(emit).toHaveBeenCalledWith(
         'typing.updated',
         expect.objectContaining({ isTyping: true }),
@@ -125,12 +135,36 @@ describe('MessengerGateway', () => {
     }
   });
 
-  it('maps service failures to a WebSocket error contract', async () => {
+  it('passes service failures to the gateway exception filter', async () => {
     const client = socket();
     messenger.getFamilyId.mockRejectedValue(new Error('not a member'));
 
     await expect(
-      gateway.join(client as never, { conversationId: 'conversation-1' }),
-    ).rejects.toEqual(new WsException({ code: 'REQUEST_REJECTED', message: 'not a member' }));
+      gateway.join(client as never, {
+        requestId: '00000000-0000-4000-8000-000000000004',
+        conversationId: 'conversation-1',
+      }),
+    ).rejects.toThrow('not a member');
+  });
+
+  it('returns command errors through the matching acknowledgement', () => {
+    const acknowledgement = jest.fn();
+    const client = { emit: jest.fn() };
+    const filter = new MessengerWsExceptionFilter();
+
+    filter.catch(new BadRequestException('Invalid payload'), {
+      getArgs: () => [
+        client,
+        { requestId: '00000000-0000-4000-8000-000000000005' },
+        acknowledgement,
+      ],
+    } as never);
+
+    expect(acknowledgement).toHaveBeenCalledWith({
+      ok: false,
+      requestId: '00000000-0000-4000-8000-000000000005',
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid payload' },
+    });
+    expect(client.emit).not.toHaveBeenCalled();
   });
 });

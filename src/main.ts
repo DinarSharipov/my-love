@@ -6,6 +6,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
+import { corsOrigins } from './common/http/cors-origin';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -22,10 +23,7 @@ async function bootstrap(): Promise<void> {
   app.setGlobalPrefix(config.get('API_PREFIX', 'api'));
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
   app.enableCors({
-    origin: (config.get<string>('CORS_ORIGINS') ?? '')
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean),
+    origin: corsOrigins(),
     credentials: true,
   });
   app.useGlobalPipes(

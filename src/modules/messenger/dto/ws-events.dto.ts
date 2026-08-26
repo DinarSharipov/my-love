@@ -2,7 +2,12 @@ import { Type } from 'class-transformer';
 import { IsString, IsUUID, MaxLength, MinLength, ValidateNested } from 'class-validator';
 import { CreateMessageDto } from './create-message.dto';
 
-export class ConversationEventDto {
+export class WsCommandDto {
+  @IsUUID('4')
+  requestId!: string;
+}
+
+export class ConversationEventDto extends WsCommandDto {
   @IsUUID('4')
   conversationId!: string;
 }

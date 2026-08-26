@@ -12,11 +12,24 @@ import { CreateConversationDto } from './dto/create-conversation.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { MessagesQueryDto } from './dto/messages-query.dto';
 import { MediaService } from '../media/media.service';
+import { ConversationResponseDto } from './dto/conversation-response.dto';
+import { ConversationMemberResponseDto } from './dto/conversation-participant-response.dto';
+import { MessagePageResponseDto, MessageResponseDto } from './dto/message-response.dto';
+import { TransferConversationOwnershipDto } from './dto/transfer-conversation-ownership.dto';
+import { MediaResponseDto } from '../media/dto/media-response.dto';
+
+const messengerUserSelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  avatarPreviewObjectKey: true,
+  avatarPreviewToken: true,
+} as const;
 
 const conversationInclude = {
   members: {
     include: {
-      user: { select: { id: true, firstName: true, lastName: true } },
+      user: { select: messengerUserSelect },
     },
   },
 } as const;
@@ -45,7 +58,7 @@ export class MessengerService {
     });
     if (members.length !== memberIds.length)
       throw new ForbiddenException('All members must belong to your family');
-    return this.prisma.conversation.create({
+    const conversation = await this.prisma.conversation.create({
       data: {
         id: randomUUID(),
         familyId: context.familyId,
@@ -58,15 +71,27 @@ export class MessengerService {
       },
       include: conversationInclude,
     });
+    return this.toConversationResponse(userId, conversation);
   }
 
   async listConversations(userId: string) {
     const { familyId } = await this.membership.requireMembership(userId);
-    return this.prisma.conversation.findMany({
+    const conversations = await this.prisma.conversation.findMany({
       where: { familyId, status: 'ACTIVE', members: { some: { userId } } },
       orderBy: { updatedAt: 'desc' },
-      include: conversationInclude,
+      include: {
+        ...conversationInclude,
+        messages: {
+          where: { deletedAt: null },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 1,
+          include: this.messageInclude(),
+        },
+      },
     });
+    return Promise.all(
+      conversations.map((conversation) => this.toConversationResponse(userId, conversation)),
+    );
   }
 
   async requireConversation(userId: string, conversationId: string) {
@@ -77,6 +102,13 @@ export class MessengerService {
     });
     if (!conversation) throw new NotFoundException('Conversation not found');
     return conversation;
+  }
+
+  async getConversation(userId: string, conversationId: string): Promise<ConversationResponseDto> {
+    return this.toConversationResponse(
+      userId,
+      await this.requireConversation(userId, conversationId),
+    );
   }
 
   async getMessages(userId: string, conversationId: string, query: MessagesQueryDto) {
@@ -111,16 +143,15 @@ export class MessengerService {
         ? [{ createdAt: 'asc' }, { id: 'asc' }]
         : [{ createdAt: 'desc' }, { id: 'desc' }],
       take: query.limit,
-      include: {
-        sender: { select: { id: true, firstName: true, lastName: true } },
-        media: { include: { media: true } },
-      },
+      include: this.messageInclude(),
     });
+    const pageItems = query.afterId ? messages : messages.reverse();
     return {
-      items: query.afterId ? messages : messages.reverse(),
+      items: await Promise.all(pageItems.map((message) => this.toMessageResponse(userId, message))),
       hasMore: messages.length === query.limit,
-      nextCursor: messages.length ? messages[messages.length - 1].id : null,
-    };
+      // The page is returned oldest -> newest. For beforeId, continue from its oldest item.
+      nextCursor: pageItems.length ? pageItems[0].id : null,
+    } satisfies MessagePageResponseDto;
   }
 
   async createMessage(userId: string, conversationId: string, dto: CreateMessageDto) {
@@ -135,10 +166,10 @@ export class MessengerService {
       where: { senderId: userId, clientMessageId: dto.clientMessageId },
       include: {
         media: { include: { media: true } },
-        sender: { select: { id: true, firstName: true, lastName: true } },
+        sender: { select: messengerUserSelect },
       },
     });
-    if (existing) return existing;
+    if (existing) return this.toMessageResponse(userId, existing);
     if (dto.mediaIds?.length) {
       const media = await this.prisma.media.findMany({
         where: { id: { in: dto.mediaIds }, familyId: conversation.familyId },
@@ -154,7 +185,7 @@ export class MessengerService {
       if (media.some((item) => item.kind !== expectedKind))
         throw new BadRequestException('Media kind does not match message type');
     }
-    return this.prisma.$transaction(async (tx) =>
+    const message = await this.prisma.$transaction(async (tx) =>
       tx.message.create({
         data: {
           conversationId,
@@ -164,12 +195,10 @@ export class MessengerService {
           text: dto.text?.trim() || null,
           media: { create: (dto.mediaIds ?? []).map((mediaId) => ({ mediaId })) },
         },
-        include: {
-          sender: { select: { id: true, firstName: true, lastName: true } },
-          media: { include: { media: true } },
-        },
+        include: this.messageInclude(),
       }),
     );
+    return this.toMessageResponse(userId, message);
   }
 
   async markRead(userId: string, conversationId: string, messageId: string) {
@@ -226,11 +255,12 @@ export class MessengerService {
     if (conversation.type !== ConversationType.GROUP) {
       throw new BadRequestException('Direct conversations cannot be renamed');
     }
-    return this.prisma.conversation.update({
+    const updated = await this.prisma.conversation.update({
       where: { id: conversationId },
       data: { title: title.trim() },
       include: conversationInclude,
     });
+    return this.toConversationResponse(userId, updated);
   }
 
   async addMember(userId: string, conversationId: string, memberId: string) {
@@ -250,7 +280,10 @@ export class MessengerService {
       create: { conversationId, userId: memberId },
       update: {},
     });
-    return this.requireConversation(userId, conversationId);
+    return this.toConversationResponse(
+      userId,
+      await this.requireConversation(userId, conversationId),
+    );
   }
 
   async removeMember(userId: string, conversationId: string, memberId: string) {
@@ -268,7 +301,10 @@ export class MessengerService {
     await this.prisma.conversationMember.delete({
       where: { conversationId_userId: { conversationId, userId: memberId } },
     });
-    return this.requireConversation(userId, conversationId);
+    return this.toConversationResponse(
+      userId,
+      await this.requireConversation(userId, conversationId),
+    );
   }
 
   async leaveConversation(userId: string, conversationId: string) {
@@ -282,6 +318,36 @@ export class MessengerService {
     return { ok: true };
   }
 
+  async transferOwnership(
+    userId: string,
+    conversationId: string,
+    dto: TransferConversationOwnershipDto,
+  ): Promise<ConversationResponseDto> {
+    const conversation = await this.requireConversation(userId, conversationId);
+    const actor = conversation.members.find((member) => member.userId === userId);
+    const target = conversation.members.find((member) => member.userId === dto.userId);
+    if (conversation.type !== ConversationType.GROUP)
+      throw new BadRequestException('Ownership can only be transferred in groups');
+    if (!actor || actor.role !== ConversationMemberRole.OWNER)
+      throw new ForbiddenException('Only the group owner can transfer ownership');
+    if (!target) throw new NotFoundException('New owner must be a conversation member');
+    if (target.userId === userId) throw new BadRequestException('New owner must be another member');
+    await this.prisma.$transaction([
+      this.prisma.conversationMember.update({
+        where: { conversationId_userId: { conversationId, userId } },
+        data: { role: ConversationMemberRole.ADMIN },
+      }),
+      this.prisma.conversationMember.update({
+        where: { conversationId_userId: { conversationId, userId: dto.userId } },
+        data: { role: ConversationMemberRole.OWNER },
+      }),
+    ]);
+    return this.toConversationResponse(
+      userId,
+      await this.requireConversation(userId, conversationId),
+    );
+  }
+
   async updateMessage(userId: string, conversationId: string, messageId: string, text: string) {
     await this.requireConversation(userId, conversationId);
     const message = await this.prisma.message.findFirst({
@@ -290,14 +356,12 @@ export class MessengerService {
     if (!message) throw new NotFoundException('Message not found');
     if (message.type !== MessageType.TEXT)
       throw new BadRequestException('Only text messages can be edited');
-    return this.prisma.message.update({
+    const updated = await this.prisma.message.update({
       where: { id: messageId },
       data: { text: text.trim() },
-      include: {
-        sender: { select: { id: true, firstName: true, lastName: true } },
-        media: { include: { media: true } },
-      },
+      include: this.messageInclude(),
     });
+    return this.toMessageResponse(userId, updated);
   }
 
   async deleteMessage(userId: string, conversationId: string, messageId: string) {
@@ -306,13 +370,124 @@ export class MessengerService {
       where: { id: messageId, conversationId, senderId: userId, deletedAt: null },
     });
     if (!message) throw new NotFoundException('Message not found');
-    return this.prisma.message.update({
+    const updated = await this.prisma.message.update({
       where: { id: messageId },
       data: { deletedAt: new Date(), text: null },
-      include: {
-        sender: { select: { id: true, firstName: true, lastName: true } },
-        media: { include: { media: true } },
+      include: this.messageInclude(),
+    });
+    return this.toMessageResponse(userId, updated);
+  }
+
+  private messageInclude() {
+    return {
+      sender: { select: messengerUserSelect },
+      media: { include: { media: true } },
+    } as const;
+  }
+
+  private async toConversationResponse(
+    userId: string,
+    conversation: {
+      id: string;
+      familyId: string;
+      createdById: string;
+      type: ConversationType;
+      title: string | null;
+      status: 'ACTIVE' | 'ARCHIVED';
+      createdAt: Date;
+      updatedAt: Date;
+      members: Array<Parameters<typeof ConversationMemberResponseDto.fromEntity>[0]>;
+      messages?: Array<Parameters<MessengerService['toMessageResponse']>[1]>;
+    },
+  ): Promise<ConversationResponseDto> {
+    const currentMember = conversation.members.find((member) => member.userId === userId);
+    const unreadCount = await this.prisma.message.count({
+      where: {
+        conversationId: conversation.id,
+        senderId: { not: userId },
+        deletedAt: null,
+        ...(currentMember?.lastReadAt
+          ? {
+              OR: [
+                { createdAt: { gt: currentMember.lastReadAt } },
+                {
+                  createdAt: currentMember.lastReadAt,
+                  id: { gt: currentMember.lastReadMessageId ?? '' },
+                },
+              ],
+            }
+          : {}),
       },
     });
+    return {
+      id: conversation.id,
+      familyId: conversation.familyId,
+      createdById: conversation.createdById,
+      type: conversation.type,
+      title: conversation.title,
+      status: conversation.status,
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt,
+      members: conversation.members.map((member) =>
+        ConversationMemberResponseDto.fromEntity(member),
+      ),
+      lastMessage: conversation.messages?.[0]
+        ? await this.toMessageResponse(userId, conversation.messages[0])
+        : null,
+      unreadCount,
+    };
+  }
+
+  private async toMessageResponse(
+    userId: string,
+    message: {
+      id: string;
+      conversationId: string;
+      senderId: string;
+      clientMessageId: string;
+      type: MessageType;
+      text: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+      deletedAt: Date | null;
+      sender: Parameters<typeof ConversationMemberResponseDto.fromEntity>[0]['user'];
+      media: Array<{ mediaId: string; createdAt: Date }>;
+    },
+  ): Promise<MessageResponseDto> {
+    const mediaById = new Map<string, MediaResponseDto>(
+      (
+        await this.mediaService.findManyByIds(
+          userId,
+          message.media.map((attachment) => attachment.mediaId),
+        )
+      ).map((media) => [media.id, media]),
+    );
+    return {
+      id: message.id,
+      conversationId: message.conversationId,
+      senderId: message.senderId,
+      clientMessageId: message.clientMessageId,
+      type: message.type,
+      text: message.text,
+      createdAt: message.createdAt,
+      updatedAt: message.updatedAt,
+      deletedAt: message.deletedAt,
+      sender: {
+        id: message.sender.id,
+        firstName: message.sender.firstName,
+        lastName: message.sender.lastName,
+        avatarUrl:
+          message.sender.avatarPreviewObjectKey && message.sender.avatarPreviewToken
+            ? `/api/v1/users/${message.sender.id}/avatar?token=${encodeURIComponent(
+                message.sender.avatarPreviewToken,
+              )}`
+            : null,
+      },
+      media: message.media.map((attachment) => ({
+        mediaId: attachment.mediaId,
+        createdAt: attachment.createdAt,
+        media: mediaById.get(attachment.mediaId)!,
+      })),
+    };
   }
 }

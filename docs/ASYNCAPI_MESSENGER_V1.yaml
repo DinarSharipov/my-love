@@ -1,0 +1,257 @@
+asyncapi: 3.0.0
+info:
+  title: My Love Messenger WebSocket API
+  version: 1.0.0
+  description: |
+    Versioned Socket.IO contract for the /messenger namespace. Authenticate with a JWT in
+    Socket.IO handshake.auth.token (or an Authorization Bearer header). Every command must
+    contain a UUID requestId. Its acknowledgement is either CommandSuccess or CommandError
+    with the same requestId. Binary payloads are never sent over WebSocket: upload through
+    the HTTP S3 multipart API first and reference resulting mediaIds in message.send.
+servers:
+  production:
+    host: api.147.45.124.221.sslip.io
+    protocol: wss
+    pathname: /messenger
+    description: Socket.IO namespace; the Engine.IO path remains /socket.io.
+channels:
+  conversation.join:
+    address: conversation.join
+    messages:
+      command:
+        $ref: '#/components/messages/ConversationCommand'
+  conversation.leave:
+    address: conversation.leave
+    messages:
+      command:
+        $ref: '#/components/messages/ConversationCommand'
+  typing.start:
+    address: typing.start
+    messages:
+      command:
+        $ref: '#/components/messages/ConversationCommand'
+  typing.stop:
+    address: typing.stop
+    messages:
+      command:
+        $ref: '#/components/messages/ConversationCommand'
+  message.send:
+    address: message.send
+    messages:
+      command:
+        $ref: '#/components/messages/SendMessageCommand'
+  message.read:
+    address: message.read
+    messages:
+      command:
+        $ref: '#/components/messages/ReadMessageCommand'
+  message.edit:
+    address: message.edit
+    messages:
+      command:
+        $ref: '#/components/messages/EditMessageCommand'
+  message.delete:
+    address: message.delete
+    messages:
+      command:
+        $ref: '#/components/messages/MessageCommand'
+  conversation.created:
+    address: conversation.created
+    messages:
+      event:
+        $ref: '#/components/messages/ConversationEvent'
+  conversation.updated:
+    address: conversation.updated
+    messages:
+      event:
+        $ref: '#/components/messages/ConversationEvent'
+  message.created:
+    address: message.created
+    messages:
+      event:
+        $ref: '#/components/messages/MessageEvent'
+  message.updated:
+    address: message.updated
+    messages:
+      event:
+        $ref: '#/components/messages/MessageEvent'
+  message.deleted:
+    address: message.deleted
+    messages:
+      event:
+        $ref: '#/components/messages/MessageEvent'
+  message.read:
+    address: message.read
+    messages:
+      event:
+        $ref: '#/components/messages/ReadEvent'
+  typing.updated:
+    address: typing.updated
+    messages:
+      event:
+        $ref: '#/components/messages/TypingEvent'
+  presence.updated:
+    address: presence.updated
+    messages:
+      event:
+        $ref: '#/components/messages/PresenceEvent'
+operations:
+  joinConversation:
+    action: send
+    channel: { $ref: '#/channels/conversation.join' }
+  leaveConversation:
+    action: send
+    channel: { $ref: '#/channels/conversation.leave' }
+  sendMessage:
+    action: send
+    channel: { $ref: '#/channels/message.send' }
+  receiveConversationCreated:
+    action: receive
+    channel: { $ref: '#/channels/conversation.created' }
+  receiveConversationUpdated:
+    action: receive
+    channel: { $ref: '#/channels/conversation.updated' }
+  receiveMessageCreated:
+    action: receive
+    channel: { $ref: '#/channels/message.created' }
+components:
+  messages:
+    ConversationCommand:
+      payload: { $ref: '#/components/schemas/ConversationCommand' }
+    SendMessageCommand:
+      payload: { $ref: '#/components/schemas/SendMessageCommand' }
+    ReadMessageCommand:
+      payload: { $ref: '#/components/schemas/ReadMessageCommand' }
+    EditMessageCommand:
+      payload: { $ref: '#/components/schemas/EditMessageCommand' }
+    MessageCommand:
+      payload: { $ref: '#/components/schemas/MessageCommand' }
+    ConversationEvent:
+      payload: { $ref: '#/components/schemas/Conversation' }
+    MessageEvent:
+      payload: { $ref: '#/components/schemas/Message' }
+    ReadEvent:
+      payload: { $ref: '#/components/schemas/ReadEvent' }
+    TypingEvent:
+      payload: { $ref: '#/components/schemas/TypingEvent' }
+    PresenceEvent:
+      payload: { $ref: '#/components/schemas/PresenceEvent' }
+  schemas:
+    Command:
+      type: object
+      required: [requestId]
+      properties:
+        requestId: { type: string, format: uuid }
+    ConversationCommand:
+      allOf:
+        - { $ref: '#/components/schemas/Command' }
+        - type: object
+          required: [conversationId]
+          properties:
+            conversationId: { type: string, format: uuid }
+    MessageCommand:
+      allOf:
+        - { $ref: '#/components/schemas/ConversationCommand' }
+        - type: object
+          required: [messageId]
+          properties:
+            messageId: { type: string, format: uuid }
+    ReadMessageCommand:
+      $ref: '#/components/schemas/MessageCommand'
+    EditMessageCommand:
+      allOf:
+        - { $ref: '#/components/schemas/MessageCommand' }
+        - type: object
+          required: [text]
+          properties:
+            text: { type: string, minLength: 1, maxLength: 4000 }
+    SendMessageCommand:
+      allOf:
+        - { $ref: '#/components/schemas/ConversationCommand' }
+        - type: object
+          required: [message]
+          properties:
+            message:
+              type: object
+              required: [clientMessageId, type]
+              properties:
+                clientMessageId: { type: string, format: uuid }
+                type: { type: string, enum: [TEXT, IMAGE, VIDEO, AUDIO] }
+                text: { type: string, maxLength: 4000 }
+                mediaIds:
+                  type: array
+                  maxItems: 10
+                  items: { type: string, format: uuid }
+    CommandSuccess:
+      type: object
+      required: [ok, requestId]
+      properties:
+        ok: { type: boolean, const: true }
+        requestId: { type: string, format: uuid }
+    CommandError:
+      type: object
+      required: [ok, requestId, error]
+      properties:
+        ok: { type: boolean, const: false }
+        requestId: { type: [string, 'null'], format: uuid }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, enum: [VALIDATION_ERROR, REQUEST_REJECTED] }
+            message: { type: string }
+    Participant:
+      type: object
+      required: [id, firstName, lastName, avatarUrl]
+      properties:
+        id: { type: string, format: uuid }
+        firstName: { type: string }
+        lastName: { type: string }
+        avatarUrl: { type: [string, 'null'], format: uri }
+    Conversation:
+      type: object
+      required: [id, familyId, createdById, type, status, members, unreadCount]
+      properties:
+        id: { type: string, format: uuid }
+        familyId: { type: string, format: uuid }
+        createdById: { type: string, format: uuid }
+        type: { type: string, enum: [DIRECT, GROUP] }
+        title: { type: [string, 'null'] }
+        status: { type: string, enum: [ACTIVE, ARCHIVED] }
+        members: { type: array, items: { type: object } }
+        lastMessage: { type: [object, 'null'] }
+        unreadCount: { type: integer, minimum: 0 }
+    Message:
+      type: object
+      required: [id, conversationId, senderId, clientMessageId, type, media]
+      properties:
+        id: { type: string, format: uuid }
+        conversationId: { type: string, format: uuid }
+        senderId: { type: string, format: uuid }
+        clientMessageId: { type: string, format: uuid }
+        type: { type: string, enum: [TEXT, IMAGE, VIDEO, AUDIO] }
+        text: { type: [string, 'null'] }
+        sender: { $ref: '#/components/schemas/Participant' }
+        media: { type: array, items: { type: object } }
+    ReadEvent:
+      type: object
+      required: [conversationId, userId, messageId, readAt]
+      properties:
+        conversationId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        messageId: { type: string, format: uuid }
+        readAt: { type: [string, 'null'], format: date-time }
+    TypingEvent:
+      type: object
+      required: [conversationId, userId, isTyping]
+      properties:
+        conversationId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        isTyping: { type: boolean }
+    PresenceEvent:
+      type: object
+      required: [conversationId, userId, status]
+      properties:
+        conversationId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        status: { type: string, enum: [online, offline] }

@@ -1,3 +1,32 @@
+# 2026-08-26 Messenger contract hardening
+
+Контракт Messenger выровнен для frontend codegen и параллельных WebSocket-команд.
+Swagger теперь описывает response DTO `ConversationResponseDto`, `MessageResponseDto` и
+`MessagePageResponseDto`, включая участников с `avatarUrl`, `lastMessage`, `unreadCount` и
+cursor-параметры `limit`, `beforeId`, `afterId`. Старые страницы сообщений отдаются в порядке
+oldest-to-newest, а `nextCursor` указывает на oldest item текущей страницы — повторов при
+дальнейшем `beforeId` не возникает.
+
+HTTP добавлены `POST /api/v1/conversations/:conversationId/messages/:messageId/read` как fallback
+к `message.read` и `POST /api/v1/conversations/:conversationId/ownership` с `{ userId }` для
+атомарной передачи OWNER существующему участнику группы. Создание/изменение чата, HTTP-команды
+сообщений и read fallback публикуют актуальные realtime-события. `conversation.created` и
+`conversation.updated` доставляются в персональную Socket.IO room каждого участника.
+
+WebSocket `/messenger` требует UUID `requestId` в каждой команде. Успех и ошибка возвращаются
+через ack с этим же `requestId`; ошибки больше не полагаются на глобальный `exception` event.
+`presence.updated` теперь всегда содержит `conversationId`. CORS gateway использует тот же
+allowlist `CORS_ORIGINS`, что и HTTP, вместо permissive `origin: true`.
+
+Версионированный протокол зафиксирован в `docs/ASYNCAPI_MESSENGER_V1.yaml`: handshake,
+client/server events, requestId ack/error и запрет бинарных payload в WebSocket. Дополнительно
+`test:e2e:migrate` стал cross-platform через Node script для Windows/CI.
+
+Миграции Prisma не требуются. Проверки: format check, lint, Prisma validate, build, полный Jest
+41 suites / 158 tests, E2E 15/15 PASS после изолированного PostgreSQL и `prisma migrate deploy`.
+Следующий срез: frontend может регенерировать OpenAPI-типы и подключать AsyncAPI contract; backend
+дальше развивает message delivery/read UX только по подтверждённой продуктовой потребности.
+
 # 2026-08-26 Ledger transaction media attachments
 
 Для финансовых операций добавлена many-to-many связь `ledger_transaction_media`.
@@ -5,6 +34,7 @@
 прикрепление идемпотентно, а detach, reversal и удаление связи не удаляют S3-объект.
 
 API:
+
 - `GET /api/v1/families/me/ledger/:id/media` — media операции;
 - `POST /api/v1/families/me/ledger/:id/media` с `{ "mediaId": "..." }` — attach;
 - `DELETE /api/v1/families/me/ledger/:id/media/:mediaId` — detach.
@@ -29,6 +59,7 @@ Meal plan использует media рецепта через уже сущес
 отдельная дублирующая привязка к meal plan не нужна.
 
 API:
+
 - `GET /api/v1/families/me/recipes/:id/media` — список доступных семье media с
   metadata, preview/download URL;
 - `POST /api/v1/families/me/recipes/:id/media` с `{ "mediaId": "..." }` — attach;
@@ -608,7 +639,7 @@ immutable `EXPENSE` и reversal таких расходов, группируе�
 | 2026-08-15 | Notification preferences                  | миграция `20260815180000_add_notification_preferences`, GET/PATCH preferences и HH:mm validation                                                                                                                                                                                      | generate, lint, 25 unit, build, diff-check                                                                                                | notification producers                                                                 |
 | 2026-08-15 | Notification producers                    | общий producer для family members, события задач и shopping с учётом in-app preferences                                                                                                                                                                                               | generate, lint, unit, build, diff-check                                                                                                   | family events и email-канал                                                            |
 | 2026-08-15 | Telegram delivery hardening               | validated DTO/Swagger, atomic single-use exchange, optional integration boundary, token cleanup, `telegram.notify` outbox и log/HTTP providers                                                                                                                                        | generate, lint, 28 unit, 9 e2e, build, 25 migrations on clean DB                                                                          | внешний Telegram bot/gateway и quiet-hours scheduling                                  |
-| 2026-08-20 | Telegram transport ownership              | удалён дублирующий Nest gateway, webhook/Bot API client, команды и Compose profile; backend оставляет linking, integration API и outbox-контракт для `DinarSharipov/my-love-telegram`                                                                                       | targeted TypeScript/build, Compose config, diff-check                                                                                     | внешний репозиторий отвечает за transport deployment                                    |
+| 2026-08-20 | Telegram transport ownership              | удалён дублирующий Nest gateway, webhook/Bot API client, команды и Compose profile; backend оставляет linking, integration API и outbox-контракт для `DinarSharipov/my-love-telegram`                                                                                                 | targeted TypeScript/build, Compose config, diff-check                                                                                     | внешний репозиторий отвечает за transport deployment                                   |
 | 2026-08-15 | Production CI/CD                          | GitHub Actions test/build/GHCR/deploy pipeline, production Compose, отдельный deploy user/key, migration и health gates                                                                                                                                                               | lint, 32 unit, build, Compose config, server SSH/Docker smoke-check                                                                       | merge PR и проверить первый production workflow                                        |
 | 2026-08-15 | Permanent Telegram authorization          | бессрочная `TelegramConnection` после одноразовой привязки; `/start` повторно использует активную связь без нового кода                                                                                                                                                               | targeted unit, lint, build                                                                                                                | quiet-hours scheduling для Telegram/email                                              |
 | 2026-08-15 | Telegram auth and domain notifications    | `/auth`/`/link`/`/start` linking, persistent bot identity, direct/family notification producer; invitations, events, first date, lifecycle, tasks/routines, shopping и reminders создают Telegram outbox                                                                              | lint, 37 unit, 9 e2e, build, diff-check                                                                                                   | добавить BotFather token и включить gateway/webhook на production                      |
@@ -691,6 +722,7 @@ immutable `EXPENSE` и reversal таких расходов, группируе�
 - Prisma migration не требуется.
 - Проверки: targeted Jest — 2 suites, 4 tests passed; targeted ESLint, TypeScript и Prettier — успешно; E2E/staging не запускались согласно правилам репозитория.
 - Следующий срез: унифицировать архивный lifecycle для финансовых категорий и проверить связанные API-контракты/Swagger.
+
 # 2026-08-21 Media S3 storage
 
 Добавлен приватный Selectel S3 media API: `POST /api/v1/media/upload`, `GET /api/v1/media/:id`, `GET /api/v1/media` с pagination и фильтрами `name`, `dateFrom`, `dateTo`, а также `DELETE /api/v1/media/:id`. Доступ ограничен JWT и владельцем metadata; для чтения возвращается короткоживущая presigned URL.
@@ -700,6 +732,7 @@ immutable `EXPENSE` и reversal таких расходов, группируе�
 Проверки: Prisma format/validate/generate, `npm run build`, `npm run lint`, `npm test` (35 suites / 126 tests), targeted media tests, `git diff --check`; Docker health, migration deploy и Selectel `HeadBucket` smoke test прошли. Frontend follow-up: использовать multipart поле `file`, затем `downloadUrl` для приватного просмотра.
 
 Следом: frontend adoption и при необходимости привязка media к domain entities (children, memories, recipes), включая retention/delete policy.
+
 ## 2026-08-21 Media family visibility and previews
 
 Media теперь привязана к `familyId`, который берётся только из активного membership текущего
@@ -715,6 +748,7 @@ backfill `family_id` через `family_members`; orphan media останавл�
 
 Следом: после проверки frontend-контракта применить миграцию на staging/production и выполнить
 smoke upload/list/detail для двух пользователей одной семьи.
+
 # 2026-08-21 Media kind separation, multipart upload and streaming
 
 Media теперь имеет `kind`: `IMAGE`, `VIDEO`, `AUDIO`; новые S3 object keys идут в `images/`, `videos/`, `audio/` по family-префиксу. Миграция классифицирует существующие objects по MIME type.
@@ -913,6 +947,7 @@ cache, иначе возможна повторная остановка кон�
 Медиафайл можно использовать в нескольких событиях; удаление связи или soft-delete события не удаляет объект S3.
 
 API:
+
 - `GET /api/v1/family-events/:id/media` — список прикреплённых медиа с метаданными и short-lived URL;
 - `POST /api/v1/family-events/:id/media` с `{ "mediaId": "..." }` — прикрепление;
 - `DELETE /api/v1/family-events/:id/media/:mediaId` — открепление.
@@ -943,6 +978,7 @@ optional `avatarMediaId`; назначать можно только IMAGE то�
 Проверки: `prisma generate`, `prisma validate`, полный Jest — 38 suites / 136 tests, format check,
 lint, build и `git diff --check` прошли. Следом: применить migration через обычный production deploy
 и выполнить isolated smoke: image upload → assignment к child profile → preview → media deletion.
+
 # 2026-08-26 Messenger WebSocket foundation
 
 Реализован первый backend-срез Messenger. Добавлены Prisma-модели и миграция `20260826170000_add_messenger_core` для семейных `Conversation`, участников, сообщений и связей `MessageMedia`. Реализованы HTTP endpoints: создание direct/group чата, список и получение чата, пагинированная история сообщений и отправка сообщения. Доступ проверяется через активное членство пользователя в семье; media разрешены только из той же семьи и с соответствующим типом IMAGE/VIDEO/AUDIO.

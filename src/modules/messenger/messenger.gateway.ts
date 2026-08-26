@@ -1,4 +1,4 @@
-import { UsePipes, ValidationPipe } from '@nestjs/common';
+import { UseFilters, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -8,7 +8,6 @@ import {
   ConnectedSocket,
   MessageBody,
 } from '@nestjs/websockets';
-import { WsException } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../../database/prisma.service';
@@ -21,11 +20,19 @@ import {
   ReadMessageEventDto,
   SendMessageEventDto,
 } from './dto/ws-events.dto';
+import { ConversationResponseDto } from './dto/conversation-response.dto';
+import { MessageResponseDto } from './dto/message-response.dto';
+import { MessengerWsExceptionFilter } from './messenger-ws-exception.filter';
+import { validateCorsOrigin } from '../../common/http/cors-origin';
 
 type AuthenticatedSocket = Socket & { user: AuthenticatedUser };
 
-@WebSocketGateway({ namespace: '/messenger', cors: { origin: true, credentials: true } })
+@WebSocketGateway({
+  namespace: '/messenger',
+  cors: { origin: validateCorsOrigin, credentials: true },
+})
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
+@UseFilters(MessengerWsExceptionFilter)
 export class MessengerGateway {
   @WebSocketServer() server!: Server;
   private readonly socketConversations = new Map<string, Set<string>>();
@@ -44,6 +51,7 @@ export class MessengerGateway {
     this.socketAuthentication.set(socket.id, authentication);
     try {
       await authentication;
+      await socket.join(`user:${socket.user.id}`);
       this.socketConversations.set(socket.id, new Set());
     } catch {
       socket.disconnect(true);
@@ -55,6 +63,7 @@ export class MessengerGateway {
     const conversations = this.socketConversations.get(socket.id) ?? new Set<string>();
     for (const conversationId of conversations) {
       this.server.to(`conversation:${conversationId}`).emit('presence.updated', {
+        conversationId,
         userId: socket.user?.id,
         status: 'offline',
       });
@@ -69,19 +78,16 @@ export class MessengerGateway {
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() body: ConversationEventDto,
   ) {
-    try {
-      await this.requireAuthenticated(socket);
-      await this.messenger.getFamilyId(socket.user.id, body.conversationId);
-      await socket.join(`conversation:${body.conversationId}`);
-      this.socketConversations.get(socket.id)?.add(body.conversationId);
-      this.server.to(`conversation:${body.conversationId}`).emit('presence.updated', {
-        userId: socket.user.id,
-        status: 'online',
-      });
-      return { ok: true, conversationId: body.conversationId };
-    } catch (error) {
-      throw new WsException(this.error(error));
-    }
+    await this.requireAuthenticated(socket);
+    await this.messenger.getFamilyId(socket.user.id, body.conversationId);
+    await socket.join(`conversation:${body.conversationId}`);
+    this.socketConversations.get(socket.id)?.add(body.conversationId);
+    this.server.to(`conversation:${body.conversationId}`).emit('presence.updated', {
+      conversationId: body.conversationId,
+      userId: socket.user.id,
+      status: 'online',
+    });
+    return { ok: true, requestId: body.requestId, conversationId: body.conversationId };
   }
 
   @SubscribeMessage('conversation.leave')
@@ -95,10 +101,11 @@ export class MessengerGateway {
     this.socketConversations.get(socket.id)?.delete(body.conversationId);
     this.clearTyping(socket.id, body.conversationId);
     this.server.to(`conversation:${body.conversationId}`).emit('presence.updated', {
+      conversationId: body.conversationId,
       userId: socket.user.id,
       status: 'offline',
     });
-    return { ok: true, conversationId: body.conversationId };
+    return { ok: true, requestId: body.requestId, conversationId: body.conversationId };
   }
 
   @SubscribeMessage('typing.start')
@@ -106,27 +113,21 @@ export class MessengerGateway {
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() body: ConversationEventDto,
   ) {
-    try {
-      await this.requireAuthenticated(socket);
-      await this.messenger.getFamilyId(socket.user.id, body.conversationId);
-      await socket.join(`conversation:${body.conversationId}`);
-      this.socketConversations.get(socket.id)?.add(body.conversationId);
-      this.server.to(`conversation:${body.conversationId}`).emit('typing.updated', {
-        userId: socket.user.id,
-        conversationId: body.conversationId,
-        isTyping: true,
-      });
-      this.clearTyping(socket.id, body.conversationId);
-      this.typingTimers.set(
-        this.typingKey(socket.id, body.conversationId),
-        setTimeout(() => {
-          this.emitTyping(socket, body.conversationId, false);
-        }, 5000),
-      );
-      return { ok: true };
-    } catch (error) {
-      throw new WsException(this.error(error));
-    }
+    await this.requireAuthenticated(socket);
+    await this.messenger.getFamilyId(socket.user.id, body.conversationId);
+    await socket.join(`conversation:${body.conversationId}`);
+    this.socketConversations.get(socket.id)?.add(body.conversationId);
+    this.server.to(`conversation:${body.conversationId}`).emit('typing.updated', {
+      userId: socket.user.id,
+      conversationId: body.conversationId,
+      isTyping: true,
+    });
+    this.clearTyping(socket.id, body.conversationId);
+    this.typingTimers.set(
+      this.typingKey(socket.id, body.conversationId),
+      setTimeout(() => this.emitTyping(socket, body.conversationId, false), 5000),
+    );
+    return { ok: true, requestId: body.requestId };
   }
 
   @SubscribeMessage('typing.stop')
@@ -134,13 +135,10 @@ export class MessengerGateway {
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() body: ConversationEventDto,
   ) {
-    try {
-      await this.messenger.getFamilyId(socket.user.id, body.conversationId);
-      this.emitTyping(socket, body.conversationId, false);
-      return { ok: true };
-    } catch (error) {
-      throw new WsException(this.error(error));
-    }
+    await this.requireAuthenticated(socket);
+    await this.messenger.getFamilyId(socket.user.id, body.conversationId);
+    this.emitTyping(socket, body.conversationId, false);
+    return { ok: true, requestId: body.requestId };
   }
 
   @SubscribeMessage('message.send')
@@ -148,18 +146,14 @@ export class MessengerGateway {
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() body: SendMessageEventDto,
   ) {
-    try {
-      await this.requireAuthenticated(socket);
-      const message = await this.messenger.createMessage(
-        socket.user.id,
-        body.conversationId,
-        body.message,
-      );
-      this.server.to(`conversation:${body.conversationId}`).emit('message.created', message);
-      return { ok: true, message };
-    } catch (error) {
-      throw new WsException(this.error(error));
-    }
+    await this.requireAuthenticated(socket);
+    const message = await this.messenger.createMessage(
+      socket.user.id,
+      body.conversationId,
+      body.message,
+    );
+    this.publishMessageCreated(body.conversationId, message);
+    return { ok: true, requestId: body.requestId, message };
   }
 
   @SubscribeMessage('message.read')
@@ -167,23 +161,15 @@ export class MessengerGateway {
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() body: ReadMessageEventDto,
   ) {
-    try {
-      await this.requireAuthenticated(socket);
-      const read = await this.messenger.markRead(
-        socket.user.id,
-        body.conversationId,
-        body.messageId,
-      );
-      this.server.to(`conversation:${body.conversationId}`).emit('message.read', {
-        conversationId: body.conversationId,
-        userId: socket.user.id,
-        messageId: body.messageId,
-        readAt: read.lastReadAt,
-      });
-      return { ok: true };
-    } catch (error) {
-      throw new WsException(this.error(error));
-    }
+    await this.requireAuthenticated(socket);
+    const read = await this.messenger.markRead(socket.user.id, body.conversationId, body.messageId);
+    this.publishMessageRead({
+      conversationId: body.conversationId,
+      userId: socket.user.id,
+      messageId: body.messageId,
+      readAt: read.lastReadAt,
+    });
+    return { ok: true, requestId: body.requestId };
   }
 
   @SubscribeMessage('message.edit')
@@ -191,19 +177,15 @@ export class MessengerGateway {
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() body: EditMessageEventDto,
   ) {
-    try {
-      await this.requireAuthenticated(socket);
-      const message = await this.messenger.updateMessage(
-        socket.user.id,
-        body.conversationId,
-        body.messageId,
-        body.text,
-      );
-      this.server.to(`conversation:${body.conversationId}`).emit('message.updated', message);
-      return { ok: true, message };
-    } catch (error) {
-      throw new WsException(this.error(error));
-    }
+    await this.requireAuthenticated(socket);
+    const message = await this.messenger.updateMessage(
+      socket.user.id,
+      body.conversationId,
+      body.messageId,
+      body.text,
+    );
+    this.publishMessageUpdated(body.conversationId, message);
+    return { ok: true, requestId: body.requestId, message };
   }
 
   @SubscribeMessage('message.delete')
@@ -211,25 +193,47 @@ export class MessengerGateway {
     @ConnectedSocket() socket: AuthenticatedSocket,
     @MessageBody() body: MessageEventDto,
   ) {
-    try {
-      await this.requireAuthenticated(socket);
-      const message = await this.messenger.deleteMessage(
-        socket.user.id,
-        body.conversationId,
-        body.messageId,
-      );
-      this.server.to(`conversation:${body.conversationId}`).emit('message.deleted', message);
-      return { ok: true, message };
-    } catch (error) {
-      throw new WsException(this.error(error));
+    await this.requireAuthenticated(socket);
+    const message = await this.messenger.deleteMessage(
+      socket.user.id,
+      body.conversationId,
+      body.messageId,
+    );
+    this.publishMessageDeleted(body.conversationId, message);
+    return { ok: true, requestId: body.requestId, message };
+  }
+
+  publishConversationCreated(conversation: ConversationResponseDto): void {
+    for (const member of conversation.members) {
+      this.server.to(`user:${member.userId}`).emit('conversation.created', conversation);
     }
   }
 
-  private error(error: unknown) {
-    return {
-      code: error instanceof WsException ? 'WS_ERROR' : 'REQUEST_REJECTED',
-      message: error instanceof Error ? error.message : 'Request failed',
-    };
+  publishConversationUpdated(conversation: ConversationResponseDto): void {
+    for (const member of conversation.members) {
+      this.server.to(`user:${member.userId}`).emit('conversation.updated', conversation);
+    }
+  }
+
+  publishMessageCreated(conversationId: string, message: MessageResponseDto): void {
+    this.server.to(`conversation:${conversationId}`).emit('message.created', message);
+  }
+
+  publishMessageUpdated(conversationId: string, message: MessageResponseDto): void {
+    this.server.to(`conversation:${conversationId}`).emit('message.updated', message);
+  }
+
+  publishMessageDeleted(conversationId: string, message: MessageResponseDto): void {
+    this.server.to(`conversation:${conversationId}`).emit('message.deleted', message);
+  }
+
+  publishMessageRead(payload: {
+    conversationId: string;
+    userId: string;
+    messageId: string;
+    readAt: Date | null;
+  }): void {
+    this.server.to(`conversation:${payload.conversationId}`).emit('message.read', payload);
   }
 
   private async authenticateSocket(socket: AuthenticatedSocket): Promise<void> {

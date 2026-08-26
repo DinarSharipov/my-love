@@ -1,5 +1,6 @@
 import { INestApplication, ValidationPipe, VersioningType } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { FamilyMemberRole, FamilyStatus, Gender, OutboxEventStatus } from '@prisma/client';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Server as HttpServer } from 'node:http';
@@ -177,6 +178,26 @@ describe('API security regression (e2e)', () => {
       });
     });
   }
+
+  it('publishes typed messenger OpenAPI responses and cursor parameters', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().addBearerAuth().build(),
+      { operationIdFactory: (_controllerKey, methodKey) => methodKey },
+    ) as unknown as {
+      components: { schemas: Record<string, unknown> };
+      paths: Record<string, { get?: { parameters?: Array<{ name: string }> } }>;
+    };
+    const schemas = document.components.schemas;
+    expect(schemas.ConversationResponseDto).toBeDefined();
+    expect(schemas.MessageResponseDto).toBeDefined();
+    expect(schemas.MessagePageResponseDto).toBeDefined();
+    const parameters =
+      document.paths['/api/v1/conversations/{conversationId}/messages'].get?.parameters;
+    expect(parameters?.map((parameter) => parameter.name)).toEqual(
+      expect.arrayContaining(['limit', 'beforeId', 'afterId']),
+    );
+  });
 
   it('protects the couple lifecycle and family-owned resources', async () => {
     const unauthorized = await request(httpServer)
@@ -998,8 +1019,8 @@ describe('API security regression (e2e)', () => {
     try {
       await Promise.all([waitForSocketConnected(aliceSocket), waitForSocketConnected(bobSocket)]);
       const joined = waitForSocketEvent<{ conversationId: string }>(bobSocket, 'presence.updated');
-      aliceSocket.emit('conversation.join', { conversationId });
-      bobSocket.emit('conversation.join', { conversationId });
+      aliceSocket.emit('conversation.join', { requestId: randomUUID(), conversationId });
+      bobSocket.emit('conversation.join', { requestId: randomUUID(), conversationId });
       await joined;
 
       const received = waitForSocketEvent<{ id: string; conversationId: string; text: string }>(
@@ -1007,6 +1028,7 @@ describe('API security regression (e2e)', () => {
         'message.created',
       );
       aliceSocket.emit('message.send', {
+        requestId: randomUUID(),
         conversationId,
         message: {
           clientMessageId: randomUUID(),

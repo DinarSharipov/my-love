@@ -15,7 +15,7 @@
     "test": "jest --runInBand",
     "test:e2e:db:up": "docker compose -f docker-compose.e2e.yml up -d --wait",
     "test:e2e:db:down": "docker compose -f docker-compose.e2e.yml down -v",
-    "test:e2e:migrate": "DATABASE_URL=postgresql://my_love_test:my_love_test@localhost:55432/my_love_test?schema=public prisma migrate deploy",
+    "test:e2e:migrate": "node test/run-e2e-migrate.js",
     "test:e2e": "node test/run-e2e.js",
     "test:messenger:redis": "jest --config test/jest-e2e.json --runInBand test/messenger-redis-fanout.e2e-spec.ts",
     "test:messenger:redis:load": "jest --config test/jest-e2e.json --runInBand test/messenger-redis-load.e2e-spec.ts",
