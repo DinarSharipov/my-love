@@ -17,6 +17,8 @@ import { ConversationMemberResponseDto } from './dto/conversation-participant-re
 import { MessagePageResponseDto, MessageResponseDto } from './dto/message-response.dto';
 import { TransferConversationOwnershipDto } from './dto/transfer-conversation-ownership.dto';
 import { MediaResponseDto } from '../media/dto/media-response.dto';
+import { PushService } from '../push/push.service';
+import { Optional } from '@nestjs/common';
 
 const messengerUserSelect = {
   id: true,
@@ -40,6 +42,7 @@ export class MessengerService {
     private readonly prisma: PrismaService,
     private readonly membership: FamilyMembershipService,
     private readonly mediaService: MediaService,
+    @Optional() private readonly pushService?: PushService,
   ) {}
 
   async createConversation(userId: string, dto: CreateConversationDto) {
@@ -228,8 +231,8 @@ export class MessengerService {
       if (media.some((item) => item.kind !== expectedKind))
         throw new BadRequestException('Media kind does not match message type');
     }
-    const message = await this.prisma.$transaction(async (tx) =>
-      tx.message.create({
+    const message = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.message.create({
         data: {
           conversationId,
           senderId: userId,
@@ -239,8 +242,32 @@ export class MessengerService {
           media: { create: (dto.mediaIds ?? []).map((mediaId) => ({ mediaId })) },
         },
         include: this.messageInclude(),
-      }),
-    );
+      });
+      const body =
+        created.text?.trim() ??
+        (created.type === MessageType.IMAGE
+          ? 'Фото'
+          : created.type === MessageType.VIDEO
+            ? 'Видео'
+            : created.type === MessageType.VOICE
+              ? 'Голосовое сообщение'
+              : null);
+      const recipientUserIds = conversation.members
+        .map((member) => member.userId)
+        .filter((memberId) => memberId !== userId);
+      if (this.pushService && body && recipientUserIds.length) {
+        await this.pushService.enqueueChatMessagePush(tx, {
+          messageId: created.id,
+          conversationId: created.conversationId,
+          senderId: created.senderId,
+          recipientUserIds,
+          senderName: `${created.sender.firstName} ${created.sender.lastName}`.trim(),
+          body,
+          occurredAt: created.createdAt,
+        });
+      }
+      return created;
+    });
     return this.toMessageResponse(userId, message);
   }
 

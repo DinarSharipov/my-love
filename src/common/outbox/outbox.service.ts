@@ -8,10 +8,12 @@ import {
   type EmailOutboxPayload,
   type OutboxTransaction,
   type TelegramNotificationEnvelope,
+  type PushNotificationPayload,
 } from './outbox.types';
 import { PayloadEncryptionService } from './payload-encryption.service';
 import { TELEGRAM_PROVIDER, type TelegramProvider } from './telegram.provider';
 import { QuietHoursService } from '../notifications/quiet-hours.service';
+import { PUSH_PROVIDER, type PushProvider } from '../push/push.provider';
 
 @Injectable()
 export class OutboxService {
@@ -23,6 +25,7 @@ export class OutboxService {
     private readonly config: ConfigService,
     @Inject(EMAIL_PROVIDER) private readonly emailProvider: EmailProvider,
     @Inject(TELEGRAM_PROVIDER) private readonly telegramProvider: TelegramProvider,
+    @Inject(PUSH_PROVIDER) private readonly pushProvider: PushProvider,
     private readonly encryption: PayloadEncryptionService,
     private readonly quietHours: QuietHoursService,
   ) {
@@ -59,6 +62,20 @@ export class OutboxService {
           payload: payload as unknown as Prisma.InputJsonValue,
           availableAt: new Date(payload.availableAt),
         },
+      })
+      .then(() => undefined);
+  }
+
+  enqueuePush(tx: OutboxTransaction, payload: PushNotificationPayload): Promise<void> {
+    return tx.outboxEvent
+      .upsert({
+        where: { dedupeKey: `chat-message:${payload.messageId}` },
+        create: {
+          type: OUTBOX_EVENT_TYPE.PUSH,
+          dedupeKey: `chat-message:${payload.messageId}`,
+          payload: payload as unknown as Prisma.InputJsonValue,
+        },
+        update: {},
       })
       .then(() => undefined);
   }
@@ -143,6 +160,22 @@ export class OutboxService {
             return;
           }
           await this.telegramProvider.send({ ...message, recipientChatId: recipient.chatId });
+        }
+      } else if (type === OUTBOX_EVENT_TYPE.PUSH) {
+        const message = this.parsePushPayload(payload);
+        const devices = await this.prisma.pushDevice.findMany({
+          where: { userId: { in: message.recipientUserIds }, disabledAt: null },
+          select: { id: true, token: true, platform: true },
+        });
+        const result = await this.pushProvider.sendToDevices({
+          devices,
+          notification: { title: message.title, body: message.body, data: message.data },
+        });
+        if (result.invalidDeviceIds.length) {
+          await this.prisma.pushDevice.updateMany({
+            where: { id: { in: result.invalidDeviceIds } },
+            data: { disabledAt: new Date() },
+          });
         }
       } else {
         throw new Error(`Unsupported outbox event type: ${type}`);
@@ -240,5 +273,28 @@ export class OutboxService {
       throw new Error('Invalid Telegram outbox payload');
     }
     return payload as unknown as TelegramNotificationEnvelope;
+  }
+
+  private parsePushPayload(payload: Prisma.JsonValue): PushNotificationPayload {
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      Array.isArray(payload) ||
+      payload.schemaVersion !== 1 ||
+      typeof payload.eventId !== 'string' ||
+      typeof payload.messageId !== 'string' ||
+      typeof payload.conversationId !== 'string' ||
+      typeof payload.senderId !== 'string' ||
+      !Array.isArray(payload.recipientUserIds) ||
+      payload.recipientUserIds.some((id) => typeof id !== 'string') ||
+      typeof payload.title !== 'string' ||
+      typeof payload.body !== 'string' ||
+      !payload.data ||
+      typeof payload.data !== 'object' ||
+      Array.isArray(payload.data)
+    ) {
+      throw new Error('Invalid push outbox payload');
+    }
+    return payload as unknown as PushNotificationPayload;
   }
 }

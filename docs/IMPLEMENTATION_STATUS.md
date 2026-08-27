@@ -1,3 +1,30 @@
+# 2026-08-27 Server-side FCM push for family messenger
+
+Добавлена push-инфраструктура для новых текстовых сообщений семейного Messenger.
+Миграция `20260827180000_add_push_devices_and_outbox_dedupe` добавляет `PushDevice` с
+уникальным FCM token, платформой `ANDROID/IOS`, app version, `lastSeenAt` и soft-disable
+через `disabledAt`, а также nullable unique `OutboxEvent.dedupeKey`.
+
+HTTP API (JWT): `POST /api/v1/push/devices` регистрирует или обновляет device token и намеренно
+не возвращает token; `DELETE /api/v1/push/devices/:token` отключает token текущего пользователя
+с ответом `204`. Повторная регистрация идемпотентна, устройств может быть несколько.
+
+Создание непустого текстового сообщения атомарно добавляет `push.notify` outbox event для всех
+участников conversation кроме sender. Event dedupe-ится по `chat-message:{messageId}`; worker
+получает только активные устройства, отправляет FCM multicast и soft-disables invalid/unregistered
+tokens. Ошибка Firebase retryable и не откатывает сообщение. Private message text и tokens не
+логируются.
+
+Firebase Admin provider включается только при `FIREBASE_PUSH_ENABLED=true` и читает
+`FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` из secret manager.
+При выключенном флаге используется logging/mock provider. Push payload и smoke test описаны в
+README. Push отправляется для непустых текстовых, image, video и voice-сообщений; для media-only
+сообщений используется короткий типовой body.
+
+Проверки: targeted push/messenger Jest `14/14`, Prisma format/validate/generate, lint и build.
+Рекомендуемый следующий срез: production/staging Firebase smoke test с Flutter token и push
+preferences.
+
 # 2026-08-27 Family wishes
 
 Реализован первый вертикальный backend-срез раздела «Семейные желания». Добавлен модуль

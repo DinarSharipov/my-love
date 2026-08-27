@@ -99,4 +99,20 @@ export const envValidationSchema = Joi.object({
     .integer()
     .min(60_000)
     .default(7 * 24 * 60 * 60 * 1000),
+  FIREBASE_PUSH_ENABLED: Joi.boolean().default(false),
+  FIREBASE_PROJECT_ID: Joi.string().min(1).when('FIREBASE_PUSH_ENABLED', {
+    is: true,
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
+  FIREBASE_CLIENT_EMAIL: Joi.string().email().when('FIREBASE_PUSH_ENABLED', {
+    is: true,
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
+  FIREBASE_PRIVATE_KEY: Joi.string().min(1).when('FIREBASE_PUSH_ENABLED', {
+    is: true,
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
 });

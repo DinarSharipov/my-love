@@ -267,6 +267,7 @@ model User {
   createdConversations             Conversation[]              @relation("ConversationCreator")
   conversationMemberships          ConversationMember[]
   sentMessages                     Message[]
+  pushDevices                      PushDevice[]
   createdFamilyWishes              FamilyWish[]                @relation("FamilyWishCreator")
   receivedFamilyWishes             FamilyWish[]                @relation("FamilyWishPartner")
   realizedFamilyWishes             FamilyWish[]                @relation("FamilyWishRealizer")
@@ -503,6 +504,28 @@ model Message {
   @@index([conversationId, createdAt, id])
   @@index([senderId, createdAt])
   @@map("messages")
+}
+
+enum PushDevicePlatform {
+  ANDROID
+  IOS
+}
+
+model PushDevice {
+  id         String             @id @default(uuid()) @db.Uuid
+  userId     String             @map("user_id") @db.Uuid
+  token      String             @unique @db.VarChar(4096)
+  platform   PushDevicePlatform
+  appVersion String?            @map("app_version") @db.VarChar(64)
+  lastSeenAt DateTime           @default(now()) @map("last_seen_at")
+  disabledAt DateTime?          @map("disabled_at")
+  createdAt  DateTime           @default(now()) @map("created_at")
+  updatedAt  DateTime           @updatedAt @map("updated_at")
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([disabledAt])
+  @@map("push_devices")
 }
 
 model MessageMedia {
@@ -1082,6 +1105,7 @@ model AccountDeletionToken {
 model OutboxEvent {
   id          String            @id @default(uuid()) @db.Uuid
   type        String            @db.VarChar(100)
+  dedupeKey   String?           @unique @map("dedupe_key") @db.VarChar(160)
   payload     Json
   status      OutboxEventStatus @default(PENDING)
   attempts    Int               @default(0)

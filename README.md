@@ -55,6 +55,41 @@ npm run start:dev
 - `GET /api/v1/health`
 - `GET /docs`
 
+### Push-уведомления Messenger
+
+Авторизованный Flutter-клиент регистрирует FCM-устройство через `POST /api/v1/push/devices`:
+
+```json
+{"token":"<FCM_DEVICE_TOKEN>","platform":"android","appVersion":"1.0.0"}
+```
+
+Отключение выполняется через `DELETE /api/v1/push/devices/{token}` с JWT. Token не возвращается
+в API-ответе и не логируется; повторная регистрация идемпотентна, устройств у пользователя
+может быть несколько.
+
+Для нового непустого текстового, image, video или voice-сообщения FCM data payload имеет формат:
+
+```json
+{"type":"chat_message","conversationId":"uuid","messageId":"uuid","senderId":"uuid"}
+```
+
+Notification title — имя отправителя, body — текст либо `Фото`/`Видео`/`Голосовое сообщение`
+для media-only сообщения. Backend не отправляет push удалённых/пустых сообщений, soft-disable-ит
+invalid/unregistered tokens, а сбой Firebase оставляет событие в retryable outbox и не откатывает
+сообщение.
+
+Для production/staging при включении Firebase нужны environment secrets:
+
+- `FIREBASE_PUSH_ENABLED=true`;
+- `FIREBASE_PROJECT_ID`;
+- `FIREBASE_CLIENT_EMAIL`;
+- `FIREBASE_PRIVATE_KEY` (service-account private key, только secret manager).
+
+Локальная проверка без Firebase: оставить `FIREBASE_PUSH_ENABLED=false`; используется mock/log
+provider. Migration: `docker compose run --rm api npx prisma migrate deploy`. Smoke test: получить
+FCM token в Flutter, зарегистрировать его с JWT, отправить текстовое сообщение вторым участником,
+проверить notification/data payload и затем удалить device через DELETE endpoint.
+
 Контракт realtime-мессенджера (Socket.IO namespace `/messenger`) опубликован в
 [`docs/ASYNCAPI_MESSENGER_V1.yaml`](docs/ASYNCAPI_MESSENGER_V1.yaml). HTTP-модели мессенджера
 доступны в Swagger/OpenAPI.

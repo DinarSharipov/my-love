@@ -11,6 +11,9 @@ import { HttpTelegramProvider } from './http-telegram.provider';
 import { LoggingTelegramProvider } from './logging-telegram.provider';
 import { TELEGRAM_PROVIDER } from './telegram.provider';
 import { QuietHoursService } from '../notifications/quiet-hours.service';
+import { FirebasePushProvider } from '../push/firebase-push.provider';
+import { LoggingPushProvider } from '../push/logging-push.provider';
+import { PUSH_PROVIDER } from '../push/push.provider';
 
 @Module({
   imports: [DatabaseModule],
@@ -43,6 +46,15 @@ import { QuietHoursService } from '../notifications/quiet-hours.service';
     OutboxWorker,
     PayloadEncryptionService,
     QuietHoursService,
+    LoggingPushProvider,
+    {
+      provide: PUSH_PROVIDER,
+      inject: [ConfigService, LoggingPushProvider],
+      useFactory: (config: ConfigService, loggingProvider: LoggingPushProvider) =>
+        config.get<boolean>('FIREBASE_PUSH_ENABLED', false)
+          ? new FirebasePushProvider(config)
+          : loggingProvider,
+    },
   ],
   exports: [OutboxService, QuietHoursService],
 })

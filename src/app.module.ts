@@ -28,6 +28,7 @@ import { MediaModule } from './modules/media/media.module';
 import { HTTP_LOG_REDACT_PATHS } from './common/logging/http-log-redaction';
 import { MessengerModule } from './modules/messenger/messenger.module';
 import { FamilyWishesModule } from './modules/family-wishes/family-wishes.module';
+import { PushModule } from './modules/push/push.module';
 
 @Module({
   imports: [
@@ -78,6 +79,7 @@ import { FamilyWishesModule } from './modules/family-wishes/family-wishes.module
     HealthModule,
     MessengerModule,
     FamilyWishesModule,
+    PushModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

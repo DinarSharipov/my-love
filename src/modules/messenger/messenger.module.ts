@@ -6,9 +6,10 @@ import { MediaModule } from '../media/media.module';
 import { MessengerController } from './messenger.controller';
 import { MessengerGateway } from './messenger.gateway';
 import { MessengerService } from './messenger.service';
+import { PushModule } from '../push/push.module';
 
 @Module({
-  imports: [DatabaseModule, FamilyMembersModule, MediaModule, JwtModule.register({})],
+  imports: [DatabaseModule, FamilyMembersModule, MediaModule, PushModule, JwtModule.register({})],
   controllers: [MessengerController],
   providers: [MessengerService, MessengerGateway],
   exports: [MessengerService],
