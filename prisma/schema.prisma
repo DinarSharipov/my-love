@@ -166,6 +166,24 @@ enum WellbeingSupportRequestStatus {
   CLOSED
 }
 
+enum FamilyWishImplementationStatus {
+  NOT_REALIZED
+  REALIZED
+}
+
+enum FamilyWishApprovalStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum FamilyWishRealizationConfirmationStatus {
+  NOT_REQUESTED
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
 model User {
   id                               String                      @id @default(uuid()) @db.Uuid
   firstName                        String                      @map("first_name") @db.VarChar(100)
@@ -249,6 +267,9 @@ model User {
   createdConversations             Conversation[]              @relation("ConversationCreator")
   conversationMemberships          ConversationMember[]
   sentMessages                     Message[]
+  createdFamilyWishes              FamilyWish[]                @relation("FamilyWishCreator")
+  receivedFamilyWishes             FamilyWish[]                @relation("FamilyWishPartner")
+  realizedFamilyWishes             FamilyWish[]                @relation("FamilyWishRealizer")
 
   @@index([lastName, firstName], map: "users_last_name_first_name_idx")
   @@map("users")
@@ -393,8 +414,37 @@ model Family {
   recipes                  Recipe[]
   mealPlans                MealPlan[]
   conversations            Conversation[]
+  familyWishes             FamilyWish[]
 
   @@map("families")
+}
+
+model FamilyWish {
+  id                            String                                  @id @default(uuid()) @db.Uuid
+  familyId                      String                                  @map("family_id") @db.Uuid
+  createdById                   String                                  @map("created_by_id") @db.Uuid
+  partnerId                     String                                  @map("partner_id") @db.Uuid
+  title                         String                                  @db.VarChar(160)
+  description                   String?                                 @db.Text
+  implementationStatus          FamilyWishImplementationStatus          @default(NOT_REALIZED) @map("implementation_status")
+  partnerApprovalStatus         FamilyWishApprovalStatus                @default(PENDING) @map("partner_approval_status")
+  realizationConfirmationStatus FamilyWishRealizationConfirmationStatus @default(NOT_REQUESTED) @map("realization_confirmation_status")
+  realizedById                  String?                                 @map("realized_by_id") @db.Uuid
+  realizedAt                    DateTime?                               @map("realized_at")
+  deletedAt                     DateTime?                               @map("deleted_at")
+  version                       Int                                     @default(1)
+  createdAt                     DateTime                                @default(now()) @map("created_at")
+  updatedAt                     DateTime                                @updatedAt @map("updated_at")
+  family                        Family                                  @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdBy                     User                                    @relation("FamilyWishCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  partner                       User                                    @relation("FamilyWishPartner", fields: [partnerId], references: [id], onDelete: Restrict)
+  realizedBy                    User?                                   @relation("FamilyWishRealizer", fields: [realizedById], references: [id], onDelete: SetNull)
+
+  @@index([familyId, createdAt, id])
+  @@index([familyId, implementationStatus, createdAt])
+  @@index([partnerId, partnerApprovalStatus, createdAt])
+  @@index([createdById, createdAt])
+  @@map("family_wishes")
 }
 
 model Conversation {

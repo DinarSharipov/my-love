@@ -1,5 +1,85 @@
 # My Love Backend — Plan v2.0
 
+## Приоритет 7 — Семейные желания
+
+Создать расширяемый backend-модуль `family-wishes` для семейных желаний между партнёрами.
+Раздел не должен смешиваться с Messenger: уведомления доставляются через существующий
+notification/outbox pipeline, а PostgreSQL остаётся источником истины для состояния желания.
+
+### Доменная модель
+
+- `FamilyWish`: `id`, `familyId`, `createdById`, `partnerId`, `title`, `description`,
+  `implementationStatus`, `partnerApprovalStatus`, `realizationConfirmationStatus`,
+  `realizedById`, `realizedAt`, `createdAt`, `updatedAt`, `version`.
+- `implementationStatus`: `NOT_REALIZED | REALIZED`.
+- `partnerApprovalStatus`: `PENDING | ACCEPTED | REJECTED`.
+- `realizationConfirmationStatus`: `NOT_REQUESTED | PENDING | ACCEPTED | REJECTED`.
+- `partnerId` фиксирует второго партнёра на момент создания; это предотвращает изменение
+  адресата при изменении состава семьи и делает историю аудируемой.
+- `version` используется для optimistic concurrency; все action-команды должны быть
+  идемпотентными и безопасными при повторной доставке уведомления.
+- Индексы: `(familyId, createdAt, id)`, `(familyId, implementationStatus, createdAt)`,
+  `(partnerId, partnerApprovalStatus, createdAt)` и `(createdById, createdAt)`.
+- Добавить CHECK-ограничения для допустимых комбинаций статусов. До принятия желания
+  реализация недоступна; после `ACCEPTED` желание имеет `NOT_REALIZED`; после отметки
+  создателем `REALIZED` партнёр получает отдельное подтверждение реализации.
+
+### Workflow и права
+
+1. Партнёр создаёт желание с `PENDING` подтверждением. Второй активный партнёр получает
+   in-app notification и, если включено, Telegram-уведомление.
+2. Адресат выполняет `accept` или `reject`. Только `PENDING` можно принять/отклонить.
+   После принятия желание становится рабочим: `partnerApprovalStatus=ACCEPTED`,
+   `implementationStatus=NOT_REALIZED`, `realizationConfirmationStatus=NOT_REQUESTED`.
+3. Создатель или любой из партнёров отмечает принятое желание реализованным. Состояние
+   меняется на `implementationStatus=REALIZED`, `realizationConfirmationStatus=PENDING`;
+   второму партнёру отправляется уведомление.
+4. Второй партнёр подтверждает или отклоняет реализацию. При подтверждении сохраняются
+   `ACCEPTED` и `REALIZED`; при отклонении — `REJECTED` и `NOT_REALIZED`, после чего желание
+   можно реализовать повторно.
+5. Нельзя принимать/отклонять желание самому себе, действовать после удаления из семьи,
+   менять чужое описание без предусмотренного права или повторно выполнять переход,
+   несовместимый с текущим состоянием.
+
+### HTTP API
+
+- `POST /api/v1/families/me/wishes` — создать желание (`title`, `description`, `partnerId`).
+- `GET /api/v1/families/me/wishes` — список с `limit`, cursor-пагинацией, фильтрами по
+  `implementationStatus`, `partnerApprovalStatus`, `createdFrom`, `createdTo` и сортировкой
+  по дате создания.
+- `GET /api/v1/families/me/wishes/:id` — получить желание с автором, адресатом и статусами.
+- `PATCH /api/v1/families/me/wishes/:id` — изменить title/description по правилам lifecycle.
+- `DELETE /api/v1/families/me/wishes/:id` — soft-delete/архивация с сохранением истории.
+- `POST /api/v1/families/me/wishes/:id/accept` и `/reject` — решение партнёра.
+- `POST /api/v1/families/me/wishes/:id/mark-realized` — заявить о реализации.
+- `POST /api/v1/families/me/wishes/:id/confirm-realization` и `/reject-realization` —
+  решение второго партнёра.
+
+Все endpoint должны иметь request/response DTO, Swagger-схемы, единые ошибки `400/403/404/409`,
+`If-Match`/version conflict для конкурентных изменений и server-side family authorization.
+
+### Уведомления и расширяемость
+
+- Создание, accept/reject, mark-realized и confirm/reject-realization публикуются в outbox
+  в одной транзакции с изменением желания.
+- Ввести typed notification payload с `wishId`, `familyId`, `actorId`, `recipientId`,
+  `action` и `version`; не передавать в уведомлении доверенные данные без повторной проверки.
+- Для realtime-клиентов предусмотреть версионированные события `family-wish.created` и
+  `family-wish.updated`; HTTP остаётся fallback и источником истины.
+- Модель должна позволять позднее добавить несколько участников/голосование, причины отказа,
+  комментарии, напоминания, вложения через существующую private S3 media pipeline и audit log.
+
+### Критерии готовности
+
+- Prisma migration, enums, constraints и индексы; response/request DTO и полный Swagger.
+- Unit/integration tests для state machine, повторных команд, optimistic concurrency,
+  family isolation, revoked membership, self-target и параллельных accept/realize запросов.
+- Проверка transactional outbox: уведомление не появляется при rollback и не дублируется
+  при retry.
+- Проверка, что до принятия нельзя отметить желание реализованным, а после reject реализации
+  оно возвращается в `NOT_REALIZED`.
+- Обновить `docs/IMPLEMENTATION_STATUS.md`; frontend repository не изменять.
+
 Это единственный рабочий план после завершения `v1.0`. План относится только к
 backend-репозиторию. Frontend, его код, сборка, генерация типов и deployment остаются
 зоной отдельного frontend-репозитория и frontend-агента.

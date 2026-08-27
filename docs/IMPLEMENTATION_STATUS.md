@@ -1,3 +1,28 @@
+# 2026-08-27 Family wishes
+
+Реализован первый вертикальный backend-срез раздела «Семейные желания». Добавлен модуль
+`family-wishes`, Prisma-модель `FamilyWish`, три статуса workflow (`NOT_REALIZED/REALIZED`,
+подтверждение желания партнёром и подтверждение реализации), optimistic concurrency через
+`version`/`If-Match`, soft-delete и индексы family-scoped. Migration:
+`20260827170000_add_family_wishes`; она проверена на чистой PostgreSQL.
+
+HTTP API:
+
+- `POST/GET /api/v1/families/me/wishes` и `GET/PATCH/DELETE /api/v1/families/me/wishes/:id`;
+- `POST /:id/accept`, `POST /:id/reject`;
+- `POST /:id/mark-realized`, `POST /:id/confirm-realization`, `POST /:id/reject-realization`.
+
+Создание и все state-changing actions атомарно записывают outbox/in-app/Telegram notification
+в одной транзакции с изменением желания. Авторизация требует активного партнёра текущей семьи;
+адресат фиксируется при создании и не может быть самим создателем. Повторные команды защищены
+Idempotency-Key и version conflict. WebSocket-события для желаний пока не добавлялись: HTTP
+остаётся источником истины для этого среза.
+
+Проверки: Prisma format/validate/generate, lint, build, targeted Jest `4/4`, полный Jest
+`42 suites / 164 tests`, migration на чистой PostgreSQL и `git diff --check` — PASS.
+Следующий срез: review контрактов/интеграционных тестов API, затем при подтверждении UX добавить
+versioned `family-wish.created/updated` events и расширенные причины отклонения.
+
 # 2026-08-26 Direct conversation uniqueness
 
 Direct conversations are now idempotent per pair within a family. A deterministic sorted

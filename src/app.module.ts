@@ -27,6 +27,7 @@ import { WellbeingModule } from './modules/wellbeing/wellbeing.module';
 import { MediaModule } from './modules/media/media.module';
 import { HTTP_LOG_REDACT_PATHS } from './common/logging/http-log-redaction';
 import { MessengerModule } from './modules/messenger/messenger.module';
+import { FamilyWishesModule } from './modules/family-wishes/family-wishes.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { MessengerModule } from './modules/messenger/messenger.module';
     MediaModule,
     HealthModule,
     MessengerModule,
+    FamilyWishesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
