@@ -41,7 +41,7 @@ import { MediaUploadInitDto } from './dto/media-upload-init.dto';
 import { MediaUploadResponseDto, MediaUploadStatusDto } from './dto/media-upload-response.dto';
 import type { Request, Response } from 'express';
 import { Readable } from 'node:stream';
-import { MediaKind } from '@prisma/client';
+import { MediaKind, MediaScope } from '@prisma/client';
 import { MediaQueryDto } from './dto/media-query.dto';
 import { MediaResponseDto } from './dto/media-response.dto';
 import { PaginatedMediaResponseDto } from './dto/paginated-media-response.dto';
@@ -242,6 +242,7 @@ export class MediaController {
       request.headers.range,
       download,
       expectedKind,
+      MediaScope.ALBUM,
     );
     response.status(object.contentRange ? 206 : 200);
     response.setHeader('Accept-Ranges', 'bytes');

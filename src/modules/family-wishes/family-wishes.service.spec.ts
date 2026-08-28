@@ -84,6 +84,22 @@ describe('FamilyWishesService', () => {
     );
   });
 
+  it('normalizes a FamilyMember id to the partner user id', async () => {
+    prisma.familyMember.findFirst.mockResolvedValue({ userId: 'user-2' });
+    prisma.familyWish.create.mockResolvedValue(wish);
+
+    await service.create('user-1', { title: 'x', partnerId: 'family-member-2' });
+
+    const createCalls = prisma.familyWish.create.mock.calls as unknown as Array<
+      [{ data: { partnerId: string } }]
+    >;
+    expect(createCalls[0][0].data.partnerId).toBe('user-2');
+    expect(notifications.notifyUserInTransaction).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({ userId: 'user-2' }),
+    );
+  });
+
   it('does not allow realization before partner approval', async () => {
     prisma.familyWish.findFirst.mockResolvedValue(wish);
     await expect(service.markRealized('user-1', wish.id)).rejects.toBeInstanceOf(ConflictException);

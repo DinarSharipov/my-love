@@ -4,7 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ConversationMemberRole, ConversationType, MessageType, Prisma } from '@prisma/client';
+import {
+  ConversationMemberRole,
+  ConversationType,
+  MediaScope,
+  MessageType,
+  Prisma,
+} from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { FamilyMembershipService } from '../family-members/family-membership.service';
 import { PrismaService } from '../../database/prisma.service';
@@ -218,7 +224,11 @@ export class MessengerService {
     if (existing) return this.toMessageResponse(userId, existing);
     if (dto.mediaIds?.length) {
       const media = await this.prisma.media.findMany({
-        where: { id: { in: dto.mediaIds }, familyId: conversation.familyId },
+        where: {
+          id: { in: dto.mediaIds },
+          familyId: conversation.familyId,
+          scope: { in: [MediaScope.ALBUM, MediaScope.CHAT] },
+        },
       });
       if (media.length !== dto.mediaIds.length)
         throw new ForbiddenException('Media must belong to the conversation family');
@@ -243,6 +253,19 @@ export class MessengerService {
         },
         include: this.messageInclude(),
       });
+      if (dto.mediaIds?.length) {
+        const claimed = await tx.media.updateMany({
+          where: {
+            id: { in: dto.mediaIds },
+            familyId: conversation.familyId,
+            scope: { in: [MediaScope.ALBUM, MediaScope.CHAT] },
+          },
+          data: { scope: MediaScope.CHAT },
+        });
+        if (claimed.count !== dto.mediaIds.length) {
+          throw new ForbiddenException('Media is reserved for another domain');
+        }
+      }
       const body =
         created.text?.trim() ??
         (created.type === MessageType.IMAGE

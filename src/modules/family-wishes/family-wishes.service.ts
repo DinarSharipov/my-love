@@ -44,21 +44,23 @@ export class FamilyWishesService {
     const { familyId } = await this.membership.requirePartner(userId);
     if (dto.partnerId === userId)
       throw new BadRequestException('A wish partner must be another user');
-    await this.requireFamilyPartner(familyId, dto.partnerId);
+    const partnerUserId = await this.resolveFamilyPartner(familyId, dto.partnerId);
+    if (partnerUserId === userId)
+      throw new BadRequestException('A wish partner must be another user');
 
     const wish = await this.prisma.$transaction(async (tx) => {
       const created = await tx.familyWish.create({
         data: {
           familyId,
           createdById: userId,
-          partnerId: dto.partnerId,
+          partnerId: partnerUserId,
           title: dto.title,
           description: dto.description ?? null,
         },
         include: wishInclude,
       });
       await this.notifications.notifyUserInTransaction(tx, {
-        userId: dto.partnerId,
+        userId: partnerUserId,
         familyId,
         type: 'FAMILY_WISH_CREATED',
         title: 'Новое семейное желание',
@@ -307,11 +309,18 @@ export class FamilyWishesService {
     return wish;
   }
 
-  private async requireFamilyPartner(familyId: string, userId: string): Promise<void> {
+  private async resolveFamilyPartner(familyId: string, identifier: string): Promise<string> {
     const partner = await this.prisma.familyMember.findFirst({
-      where: { familyId, userId, role: FamilyMemberRole.PARTNER, family: { status: 'ACTIVE' } },
+      where: {
+        familyId,
+        role: FamilyMemberRole.PARTNER,
+        family: { status: 'ACTIVE' },
+        OR: [{ userId: identifier }, { id: identifier }],
+      },
+      select: { userId: true },
     });
     if (!partner)
       throw new ForbiddenException('The wish partner must be an active partner in your family');
+    return partner.userId;
   }
 }

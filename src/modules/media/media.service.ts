@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { MediaKind, MediaUploadStatus, Prisma } from '@prisma/client';
+import { MediaKind, MediaScope, MediaUploadStatus, Prisma } from '@prisma/client';
 import { unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
@@ -86,6 +86,7 @@ export class MediaService {
           originalName: file.originalname,
           mimeType: file.mimetype,
           kind,
+          scope: MediaScope.ALBUM,
           sizeBytes: file.size,
         },
       });
@@ -101,7 +102,12 @@ export class MediaService {
 
   async initiateUpload(
     userId: string,
-    input: { originalName: string; mimeType: string; sizeBytes: number },
+    input: {
+      originalName: string;
+      mimeType: string;
+      sizeBytes: number;
+      scope?: MediaScope;
+    },
   ) {
     const kind = getMediaKind(input.mimeType);
     if (!kind) throw new BadRequestException('Unsupported image, video or audio format');
@@ -130,6 +136,7 @@ export class MediaService {
           originalName: input.originalName,
           mimeType: input.mimeType,
           kind,
+          scope: input.scope ?? MediaScope.ALBUM,
           sizeBytes: input.sizeBytes,
           expiresAt,
         },
@@ -229,6 +236,7 @@ export class MediaService {
             originalName: session.originalName,
             mimeType: session.mimeType,
             kind: session.kind,
+            scope: session.scope,
             sizeBytes: session.sizeBytes,
           },
         });
@@ -265,7 +273,9 @@ export class MediaService {
 
   async findOne(userId: string, id: string): Promise<MediaResponseDto> {
     const { familyId } = await this.membership.requireMembership(userId);
-    const media = await this.prisma.media.findFirst({ where: { id, familyId } });
+    const media = await this.prisma.media.findFirst({
+      where: { id, familyId, scope: MediaScope.ALBUM },
+    });
     if (!media) throw new NotFoundException('Media not found');
     return this.toResponse(media);
   }
@@ -287,6 +297,7 @@ export class MediaService {
     const name = query.name?.trim();
     const where: Prisma.MediaWhereInput = {
       familyId,
+      scope: MediaScope.ALBUM,
       ...(name ? { originalName: { contains: name, mode: 'insensitive' } } : {}),
       ...(query.dateFrom || query.dateTo
         ? {
@@ -314,7 +325,9 @@ export class MediaService {
 
   async remove(userId: string, id: string): Promise<void> {
     const { familyId } = await this.membership.requireMembership(userId);
-    const media = await this.prisma.media.findFirst({ where: { id, userId, familyId } });
+    const media = await this.prisma.media.findFirst({
+      where: { id, userId, familyId, scope: MediaScope.ALBUM },
+    });
     if (!media) throw new NotFoundException('Media not found');
     await this.prisma.media.delete({ where: { id: media.id } });
     await this.cleanup.deleteOrEnqueue(media.objectKey);
@@ -327,10 +340,17 @@ export class MediaService {
     range?: string,
     download = false,
     expectedKind?: MediaKind,
+    expectedScope?: MediaScope,
   ) {
     const { familyId } = await this.membership.requireMembership(userId);
-    const media = await this.prisma.media.findFirst({ where: { id, familyId } });
-    if (!media || (expectedKind && media.kind !== expectedKind))
+    const media = await this.prisma.media.findFirst({
+      where: { id, familyId, ...(expectedScope ? { scope: expectedScope } : {}) },
+    });
+    if (
+      !media ||
+      (expectedKind && media.kind !== expectedKind) ||
+      (expectedScope && media.scope !== expectedScope)
+    )
       throw new NotFoundException('Media not found');
     const object = await this.storage.getObjectStream(media.objectKey, range);
     return { ...object, mimeType: media.mimeType, originalName: media.originalName, download };
@@ -345,6 +365,7 @@ export class MediaService {
     originalName: string;
     mimeType: string;
     kind: MediaKind;
+    scope: MediaScope;
     sizeBytes: bigint;
     createdAt: Date;
   }): Promise<MediaResponseDto> {
@@ -354,6 +375,7 @@ export class MediaService {
       originalName: media.originalName,
       mimeType: media.mimeType,
       kind: media.kind,
+      scope: media.scope,
       sizeBytes: Number(media.sizeBytes),
       createdAt: media.createdAt,
       downloadUrl: await this.storage.createDownloadUrl(media.objectKey),

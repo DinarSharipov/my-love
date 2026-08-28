@@ -14,7 +14,10 @@ export class CreateFamilyWishDto {
   @MaxLength(5000)
   description?: string | null;
 
-  @ApiProperty({ format: 'uuid' })
+  @ApiProperty({
+    format: 'uuid',
+    description: 'Partner user id. FamilyMember.id is also accepted for compatibility.',
+  })
   @IsUUID('4')
   partnerId!: string;
 }

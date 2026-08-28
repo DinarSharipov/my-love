@@ -1,3 +1,28 @@
+# 2026-08-28 Family wish partner identifier compatibility
+
+Исправлен контракт создания family wish: `partnerId` теперь принимает как `User.id`, так и
+`FamilyMember.id` из `GET /api/v1/families/me`. Backend нормализует значение в `User.id` только
+после проверки активной семьи и роли `PARTNER`; хранение и уведомления используют нормализованный
+user id. Это устраняет 403 при передаче frontend-ом `members[].id` и не ослабляет authorization.
+
+Проверка: FamilyWishesService Jest `5/5`.
+
+# 2026-08-28 Media scopes and album isolation
+
+Добавлено явное назначение media через Prisma enum `MediaScope`: `ALBUM`, `CHAT`, `RECIPE`,
+`FAMILY_EVENT`, `LEDGER`, `USER_AVATAR`, `CHILD_AVATAR`. Значение хранится и в `Media`, и в
+`MediaUploadSession`; migration `20260828100000_add_media_scope` безопасно классифицирует старые
+записи как `ALBUM`.
+
+`POST /api/v1/media/uploads/initiate` принимает optional `scope` (legacy default `ALBUM`). Общие
+`GET /api/v1/media`, `GET /api/v1/media/:id`, video/audio stream/download и DELETE теперь работают
+только с `ALBUM`. Message media остаётся доступной через message-scoped Messenger endpoints;
+при создании сообщения выбранные legacy `ALBUM` media атомарно переводятся в `CHAT`, а media,
+зарезервированная другим доменом, отклоняется.
+
+Проверки: Prisma format/validate/generate, clean PostgreSQL migration (63 migrations), format,
+lint, build и Jest `44 suites / 169 tests` PASS.
+
 # 2026-08-27 Server-side FCM push for family messenger
 
 Добавлена push-инфраструктура для новых текстовых сообщений семейного Messenger.

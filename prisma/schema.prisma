@@ -87,6 +87,16 @@ enum MediaUploadStatus {
   FAILED
 }
 
+enum MediaScope {
+  ALBUM
+  CHAT
+  RECIPE
+  FAMILY_EVENT
+  LEDGER
+  USER_AVATAR
+  CHILD_AVATAR
+}
+
 enum ConversationType {
   DIRECT
   GROUP
@@ -285,6 +295,7 @@ model Media {
   originalName           String                   @map("original_name") @db.VarChar(255)
   mimeType               String                   @map("mime_type") @db.VarChar(127)
   kind                   MediaKind
+  scope                  MediaScope               @default(ALBUM)
   sizeBytes              BigInt                   @map("size_bytes")
   createdAt              DateTime                 @default(now()) @map("created_at")
   user                   User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -347,6 +358,7 @@ model MediaUploadSession {
   originalName String            @map("original_name") @db.VarChar(255)
   mimeType     String            @map("mime_type") @db.VarChar(127)
   kind         MediaKind
+  scope        MediaScope        @default(ALBUM)
   sizeBytes    BigInt            @map("size_bytes")
   status       MediaUploadStatus @default(INITIATED)
   expiresAt    DateTime          @map("expires_at")

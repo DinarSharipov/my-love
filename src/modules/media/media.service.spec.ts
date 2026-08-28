@@ -24,6 +24,7 @@ describe('MediaService', () => {
       id: 'media-id',
       userId: 'user-id',
       familyId: 'family-id',
+      scope: 'ALBUM',
       objectKey: 'uploads/family-id/object.jpg',
       previewObjectKey: 'previews/family-id/object.webp',
       originalName: 'photo.jpg',
@@ -62,6 +63,7 @@ describe('MediaService', () => {
     const [findManyArgs] = findManyCalls[0];
     expect(findManyArgs.where).toEqual({
       familyId: 'family-id',
+      scope: 'ALBUM',
       originalName: { contains: 'photo', mode: 'insensitive' },
       createdAt: {
         gte: new Date('2026-08-20T00:00:00.000Z'),
@@ -90,6 +92,7 @@ describe('MediaService', () => {
       media: {
         findFirst: jest.fn().mockResolvedValue({
           id: 'media-id',
+          scope: 'ALBUM',
           objectKey: 'object-key',
           previewObjectKey: 'preview-key',
         }),
