@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   ArrayUnique,
   IsArray,
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -43,6 +44,7 @@ export class IntimacyCalendarQueryDto {
 
 export class UpsertIntimacyEventDto {
   @ApiProperty()
+  @IsBoolean()
   occurred!: boolean;
 
   @ApiPropertyOptional({ enum: IntimacyRating, nullable: true })

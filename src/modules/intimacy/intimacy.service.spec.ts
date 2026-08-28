@@ -1,5 +1,20 @@
-import { IntimacyMood, IntimacyPreference } from '@prisma/client';
+import { IntimacyMood, IntimacyPreference, IntimacyRating } from '@prisma/client';
+import { validate } from 'class-validator';
+import { UpsertIntimacyEventDto } from './dto/intimacy.dto';
 import { IntimacyService } from './intimacy.service';
+
+describe('UpsertIntimacyEventDto', () => {
+  it('accepts the occurred field with strict whitelist validation', async () => {
+    const dto = Object.assign(new UpsertIntimacyEventDto(), {
+      occurred: true,
+      rating: IntimacyRating.GOOD,
+    });
+
+    await expect(validate(dto, { whitelist: true, forbidNonWhitelisted: true })).resolves.toEqual(
+      [],
+    );
+  });
+});
 
 describe('IntimacyService', () => {
   const membership = { requirePartner: jest.fn() };

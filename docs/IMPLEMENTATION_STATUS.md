@@ -6,7 +6,9 @@ HTTP API (JWT): `GET /api/v1/families/me/intimacy/calendar?from=&to=`, check-in 
 
 Privacy: `FamilyMembershipService.requirePartner` gates every operation. Check-in responses expose only the current user's answer; before both answers only `partnerHasAnswered` is returned. After both answers, the service computes (without persistence) a conservative mutual-interest boolean and preference intersection; partner mood, desire, and non-matching preferences are never returned. Mutual interest means both desire levels are at least 3 and both moods are not `NOT_TODAY`/`UNSURE`. Calendar responses contain only existence flags and nullable aggregate status. Date ranges are inclusive and limited to 366 days.
 
-Validation and tests: Prisma format/validate/generate, build, lint, diff check, intimacy service tests (`4/4`), and the full Jest suite (`45 suites / 174 tests`) pass.
+Validation and tests: Prisma format/validate/generate, build, lint, diff check, intimacy service tests (`5/5`), and the full Jest suite (`45 suites / 175 tests`) pass. `PUT /api/v1/families/me/intimacy/events/:date` validates the required `occurred` boolean with `@IsBoolean()`; this prevents the global strict whitelist from rejecting the field as unknown.
+
+Local HTTP smoke check is pending: the current Compose environment cannot start because `REDIS_PASSWORD` is absent. Set this non-empty local environment variable, rebuild the API container, and repeat the request; no database migration is required for this validation-only fix.
 
 Recommended next slice: run the full test suite and apply the migration in the local Compose database, then publish the generated Swagger contract for client integration.
 
