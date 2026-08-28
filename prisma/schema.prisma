@@ -194,6 +194,31 @@ enum FamilyWishRealizationConfirmationStatus {
   REJECTED
 }
 
+enum IntimacyMood {
+  SEX
+  TENDERNESS
+  CLOSENESS
+  EXPERIMENT
+  NOT_TODAY
+  UNSURE
+}
+
+enum IntimacyPreference {
+  KISSING
+  MASSAGE
+  SEX
+  SHOWER
+  ROMANTIC
+  EXPERIMENT
+  OTHER
+}
+
+enum IntimacyRating {
+  GREAT
+  GOOD
+  NEUTRAL
+}
+
 model User {
   id                               String                      @id @default(uuid()) @db.Uuid
   firstName                        String                      @map("first_name") @db.VarChar(100)
@@ -272,6 +297,8 @@ model User {
   receivedWellbeingSupportRequests WellbeingSupportRequest[]   @relation("WellbeingSupportRequestRecipient")
   createdWellbeingRituals          WellbeingRitual[]           @relation("WellbeingRitualCreator")
   createdWellbeingCoupleMeetings   WellbeingCoupleMeeting[]    @relation("WellbeingCoupleMeetingCreator")
+  intimacyCheckIns                 IntimacyCheckIn[]
+  createdIntimacyEvents            IntimacyEvent[]             @relation("IntimacyEventCreator")
   media                            Media[]
   mediaUploadSessions              MediaUploadSession[]
   createdConversations             Conversation[]              @relation("ConversationCreator")
@@ -428,6 +455,8 @@ model Family {
   mealPlans                MealPlan[]
   conversations            Conversation[]
   familyWishes             FamilyWish[]
+  intimacyCheckIns         IntimacyCheckIn[]
+  intimacyEvents           IntimacyEvent[]
 
   @@map("families")
 }
@@ -458,6 +487,51 @@ model FamilyWish {
   @@index([partnerId, partnerApprovalStatus, createdAt])
   @@index([createdById, createdAt])
   @@map("family_wishes")
+}
+
+model IntimacyCheckIn {
+  id          String                      @id @default(uuid()) @db.Uuid
+  familyId    String                      @map("family_id") @db.Uuid
+  userId      String                      @map("user_id") @db.Uuid
+  date        DateTime                    @db.Date
+  mood        IntimacyMood
+  desireLevel Int                         @map("desire_level")
+  createdAt   DateTime                    @default(now()) @map("created_at")
+  updatedAt   DateTime                    @updatedAt @map("updated_at")
+  family      Family                      @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  user        User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferences IntimacyCheckInPreference[]
+
+  @@unique([userId, date])
+  @@index([familyId, date])
+  @@index([familyId, userId, date])
+  @@map("intimacy_check_ins")
+}
+
+model IntimacyCheckInPreference {
+  checkInId  String             @map("check_in_id") @db.Uuid
+  preference IntimacyPreference
+  checkIn    IntimacyCheckIn    @relation(fields: [checkInId], references: [id], onDelete: Cascade)
+
+  @@id([checkInId, preference])
+  @@map("intimacy_check_in_preferences")
+}
+
+model IntimacyEvent {
+  id              String          @id @default(uuid()) @db.Uuid
+  familyId        String          @map("family_id") @db.Uuid
+  date            DateTime        @db.Date
+  createdByUserId String          @map("created_by_user_id") @db.Uuid
+  occurred        Boolean
+  rating          IntimacyRating?
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  family          Family          @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdByUser   User            @relation("IntimacyEventCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([familyId, date])
+  @@index([familyId, createdByUserId])
+  @@map("intimacy_events")
 }
 
 model Conversation {

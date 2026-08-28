@@ -1,5 +1,57 @@
 # My Love Backend — Plan v2.0
 
+## Срез 9. Интимный календарь пары (backend MVP)
+
+Раздел доступен только двум взрослым партнёрам активной семьи. Все данные строго family-scoped;
+дети и другие участники семьи не получают доступ. Реализовать без уведомлений, Telegram,
+WebSocket, рекомендаций, AI, статистики, streaks, достижений, комментариев и истории изменений.
+
+### Ежедневный check-in
+
+- Prisma-модель `IntimacyCheckIn`: `id`, `familyId`, `userId`, `date`, `mood`, `desireLevel`,
+  `createdAt`, `updatedAt`.
+- `mood`: `SEX | TENDERNESS | CLOSENESS | EXPERIMENT | NOT_TODAY | UNSURE`.
+- `desireLevel`: integer `1..5` с серверной валидацией.
+- Уникальность `(userId, date)`; дата нормализуется как календарная дата в согласованной timezone.
+- API: `GET /api/v1/families/me/intimacy/calendar?from=&to=`,
+  `GET/PUT/DELETE /api/v1/families/me/intimacy/check-ins/:date`.
+- `PUT` — idempotent create/update только текущего пользователя.
+
+### Предпочтения и privacy-safe matching
+
+- Предпочтения: `KISSING | MASSAGE | SEX | SHOWER | ROMANTIC | EXPERIMENT | OTHER`.
+- Предпочтения хранить relational-моделью с composite unique `(checkInId, preference)` и
+  cascade-delete вместе с check-in.
+- До собственного ответа возвращать только `partnerHasAnswered`.
+- После ответа обоих партнёров возвращать только `hasMutualInterest` и `matchedPreferences`.
+- Никогда не отдавать партнёру полный check-in, `desireLevel`, `mood` или несовпавшие preferences.
+- `hasMutualInterest` и `matchedPreferences` не сохранять в БД — вычислять из двух check-in.
+
+### Факт близости
+
+- Prisma-модель `IntimacyEvent`: `id`, `familyId`, `date`, `createdByUserId`, `occurred`, `rating`,
+  `createdAt`, `updatedAt`; unique `(familyId, date)`.
+- `rating`: `GREAT | GOOD | NEUTRAL`; допускается `null`.
+- API: `PUT/GET/DELETE /api/v1/families/me/intimacy/events/:date`.
+- `PUT` — create/update; не вычислять автоматически факт секса и не строить статистику.
+
+### Минимальный calendar response
+
+Для каждого дня возвращать только `date`, `myCheckInExists`, `partnerCheckInExists`,
+`hasMutualInterest`, `intimacyEventExists`. Детали check-in доступны только через собственный
+endpoint и privacy-safe aggregate после ответов обоих партнёров.
+
+### Authorization, Swagger и тесты
+
+- Все endpoints требуют JWT, active family membership и роль взрослого `PARTNER`; family boundary
+  проверяется server-side.
+- Добавить request/response DTO, date validation, Swagger schemas и migration.
+- Тесты: partner-only access, cross-family isolation, unique user/date, privacy до ответа второго
+  партнёра, safe matching, check-in/event create-update-delete и отсутствие утечки чувствительных
+  полей.
+- Критерии готовности: migration на чистой БД, unit/integration authorization/privacy tests,
+  lint, build, полный Jest и актуальный Swagger.
+
 ## Приоритет 7 — Семейные желания
 
 Создать расширяемый backend-модуль `family-wishes` для семейных желаний между партнёрами.

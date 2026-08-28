@@ -1,3 +1,15 @@
+# 2026-08-28 Intimate couple calendar backend MVP
+
+Implemented the family-scoped intimate calendar slice for exactly the adult partner access boundary. Added Prisma models and migration `20260828130000_add_intimacy_calendar` for daily check-ins, relational preferences, and one intimacy event per family/date.
+
+HTTP API (JWT): `GET /api/v1/families/me/intimacy/calendar?from=&to=`, check-in `GET/PUT/DELETE /api/v1/families/me/intimacy/check-ins/:date`, and event `PUT/GET/DELETE /api/v1/families/me/intimacy/events/:date`. Swagger contains request/response schemas and enum contracts.
+
+Privacy: `FamilyMembershipService.requirePartner` gates every operation. Check-in responses expose only the current user's answer; before both answers only `partnerHasAnswered` is returned. After both answers, the service computes (without persistence) a conservative mutual-interest boolean and preference intersection; partner mood, desire, and non-matching preferences are never returned. Mutual interest means both desire levels are at least 3 and both moods are not `NOT_TODAY`/`UNSURE`. Calendar responses contain only existence flags and nullable aggregate status. Date ranges are inclusive and limited to 366 days.
+
+Validation and tests: Prisma format/validate/generate, build, lint, diff check, intimacy service tests (`4/4`), and the full Jest suite (`45 suites / 174 tests`) pass.
+
+Recommended next slice: run the full test suite and apply the migration in the local Compose database, then publish the generated Swagger contract for client integration.
+
 # 2026-08-28 Family wish partner identifier compatibility
 
 Исправлен контракт создания family wish: `partnerId` теперь принимает как `User.id`, так и
