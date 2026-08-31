@@ -15,6 +15,17 @@ import { TELEGRAM_PROVIDER, type TelegramProvider } from './telegram.provider';
 import { QuietHoursService } from '../notifications/quiet-hours.service';
 import { PUSH_PROVIDER, type PushProvider } from '../push/push.provider';
 
+export interface OutboxMetrics {
+  generatedAt: string;
+  pending: number;
+  retrying: number;
+  processing: number;
+  staleProcessing: number;
+  delivered: number;
+  failed: number;
+  oldestPendingAt: string | null;
+}
+
 @Injectable()
 export class OutboxService {
   private readonly logger = new Logger(OutboxService.name);
@@ -86,9 +97,41 @@ export class OutboxService {
       const event = await this.claimNext();
       if (!event) break;
       processed += 1;
-      await this.deliver(event.id, event.type, event.payload);
+      await this.deliver(event.id, event.type, event.payload, event.createdAt);
     }
     return processed;
+  }
+
+  async getMetrics(): Promise<OutboxMetrics> {
+    const now = new Date();
+    const staleLockBefore = new Date(
+      now.getTime() - this.config.get<number>('OUTBOX_LOCK_TIMEOUT_MS', 300_000),
+    );
+    const [statusCounts, retrying, staleProcessing, oldestPending] = await Promise.all([
+      this.prisma.outboxEvent.groupBy({ by: ['status'], _count: { _all: true } }),
+      this.prisma.outboxEvent.count({
+        where: { status: OutboxEventStatus.PENDING, attempts: { gt: 0 } },
+      }),
+      this.prisma.outboxEvent.count({
+        where: { status: OutboxEventStatus.PROCESSING, lockedAt: { lte: staleLockBefore } },
+      }),
+      this.prisma.outboxEvent.findFirst({
+        where: { status: OutboxEventStatus.PENDING },
+        orderBy: { createdAt: 'asc' },
+        select: { createdAt: true },
+      }),
+    ]);
+    const byStatus = new Map(statusCounts.map((entry) => [entry.status, entry._count._all]));
+    return {
+      generatedAt: now.toISOString(),
+      pending: byStatus.get(OutboxEventStatus.PENDING) ?? 0,
+      retrying,
+      processing: byStatus.get(OutboxEventStatus.PROCESSING) ?? 0,
+      staleProcessing,
+      delivered: byStatus.get(OutboxEventStatus.DELIVERED) ?? 0,
+      failed: byStatus.get(OutboxEventStatus.FAILED) ?? 0,
+      oldestPendingAt: oldestPending?.createdAt.toISOString() ?? null,
+    };
   }
 
   private async claimNext() {
@@ -120,7 +163,12 @@ export class OutboxService {
     });
   }
 
-  private async deliver(id: string, type: string, payload: Prisma.JsonValue): Promise<void> {
+  private async deliver(
+    id: string,
+    type: string,
+    payload: Prisma.JsonValue,
+    createdAt?: Date,
+  ): Promise<void> {
     try {
       if (type === OUTBOX_EVENT_TYPE.EMAIL) {
         await this.emailProvider.send(this.parseEmailPayload(payload));
@@ -184,7 +232,12 @@ export class OutboxService {
         where: { id, status: OutboxEventStatus.PROCESSING },
         data: { status: OutboxEventStatus.DELIVERED, deliveredAt: new Date(), lockedAt: null },
       });
-      this.logger.log({ event: 'outbox_event_delivered', outboxEventId: id, type });
+      this.logger.log({
+        event: 'outbox_event_delivered',
+        outboxEventId: id,
+        type,
+        ...(createdAt ? { deliveryLatencyMs: Date.now() - createdAt.getTime() } : {}),
+      });
     } catch (error) {
       await this.fail(id, error);
     }

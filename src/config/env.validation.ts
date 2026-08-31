@@ -46,6 +46,7 @@ export const envValidationSchema = Joi.object({
   OUTBOX_POLL_INTERVAL_MS: Joi.number().integer().min(250).default(5000),
   OUTBOX_LOCK_TIMEOUT_MS: Joi.number().integer().min(1000).default(300000),
   OUTBOX_MAX_ATTEMPTS: Joi.number().integer().min(1).max(20).default(5),
+  OUTBOX_METRICS_TOKEN: Joi.string().min(32).optional(),
   OUTBOX_ENCRYPTION_KEY: Joi.string().min(32).optional(),
   CLEANUP_WORKER_ENABLED: Joi.boolean().default(true),
   CLEANUP_POLL_INTERVAL_MS: Joi.number().integer().min(1000).default(3600000),

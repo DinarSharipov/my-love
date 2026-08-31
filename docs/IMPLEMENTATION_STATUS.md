@@ -1,3 +1,27 @@
+# 2026-08-31 Operational reliability: disk guardrails and outbox observability
+
+Оба Compose-файла теперь используют Docker `local` logging driver с лимитом 10 MB и
+тремя файлами на сервис. Это ограничивает локальное накопление container logs без
+удаления volumes, PostgreSQL или активных контейнеров.
+
+Добавлен опциональный защищённый endpoint `GET /api/v1/health/outbox`. Он включается
+только при заданном `OUTBOX_METRICS_TOKEN` (header `x-ops-token`) и возвращает только
+агрегаты очереди: pending/retrying/processing/stale/delivered/failed и oldest pending
+timestamp. Payload событий, сообщения, адреса и токены не возвращаются. Structured
+delivery log дополнен `deliveryLatencyMs`, когда timestamp создания события известен.
+
+Добавлен `docs/OPERATIONS_RUNBOOK.md`: disk/Docker hygiene, deploy/rollback,
+migration recovery, outbox, S3 и Telegram outage policy. Новая метрика не требует
+Prisma migration; frontend не менялся.
+
+Проверки: Compose config (local/prod с тестовым Redis password), Prisma generate/validate,
+ESLint, Jest 46 suites / 176 tests, build и `git diff --check` проходят. `npm ci` после
+обновления main сообщает о 10 известных audit vulnerabilities; dependencies не менялись.
+
+Следом: задать локальный `REDIS_PASSWORD`, пересобрать Compose и выполнить HTTP smoke
+`/health/outbox` с отдельным token; затем провести production disk/metrics smoke и
+проверить применение всех свежих migrations.
+
 # 2026-08-28 Intimate couple calendar backend MVP
 
 Implemented the family-scoped intimate calendar slice for exactly the adult partner access boundary. Added Prisma models and migration `20260828130000_add_intimacy_calendar` for daily check-ins, relational preferences, and one intimacy event per family/date.
